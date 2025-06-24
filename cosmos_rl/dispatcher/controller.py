@@ -410,6 +410,8 @@ class Controller:
         else:
             rollouts_to_put = list(itertools.chain(valid_rollouts, invalid_rollouts))
 
+        self.policy_status_manager.set_sample_rollout_group(rollouts_to_put)
+
         for rollout in rollouts_to_put:
             self.policy_status_manager.put_rollout(rollout)
 

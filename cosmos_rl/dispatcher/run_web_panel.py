@@ -308,6 +308,7 @@ async def put_rollout_group(rollout: RolloutRequest):
                 controller.policy_status_manager.recompute_total_steps(
                     explicit_num_remaining_samples=total_pending_rollouts
                 )
+                controller.policy_status_manager.notify_rollout_end()
                 new_total_steps = controller.policy_status_manager.total_steps
                 if new_total_steps > controller.policy_status_manager.current_step:
                     logger.info(

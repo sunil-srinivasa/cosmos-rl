@@ -81,6 +81,7 @@ class PolicyStatusManager:
         self.val_iters: Dict[int, Iterator] = {}
         self.activated_val_iter: Optional[Iterator] = None
         self.val_report_data: Dict[int, List[Any]] = {}
+        self.rollouts_end = False
 
     def setup(
         self,
@@ -167,9 +168,13 @@ class PolicyStatusManager:
             num_remaining_samples = (
                 explicit_num_remaining_samples or self.remain_samples_num
             )
-            self.total_steps = self.current_step + num_remaining_samples // (
-                self.config.train.train_batch_per_replica * num_policy_replicas
+            self.total_steps = self.current_step + math.ceil(
+                num_remaining_samples
+                / (self.config.train.train_batch_per_replica * num_policy_replicas)
             )
+            # For future possible rebuild mesh update to use new calculated remain samples
+            if explicit_num_remaining_samples is not None:
+                self.remain_samples_num = explicit_num_remaining_samples
 
     def get_status(self, name: str) -> PolicyStatus:
         """
@@ -545,6 +550,32 @@ class PolicyStatusManager:
         """
         return self.rollout_buffer.qsize()
 
+    def fill_rollouts_for_one_batch(self, require_rollouts_num: int):
+        """
+        Fill rollouts for one batch.
+        This is used to ensure that the rollout buffer has enough rollouts for one batch.
+        """
+        num_policy_replicas = len(self.get_all_atoms_arrived_replicas())
+        if num_policy_replicas > 0:
+            # Only fill rollouts when there are policy replicas and there are remaining rollouts but not enough to match one batch
+            if (
+                self.rollout_buffer.qsize() < require_rollouts_num
+                and self.rollout_buffer.qsize() > 0
+            ):
+                logger.warning(
+                    f"[Controller] Rollout buffer size {self.rollout_buffer.qsize()} is less than train batch size {self.config.train.train_batch_per_replica} * num replicas {num_policy_replicas}, filling rollouts."
+                )
+                for idx in range(require_rollouts_num - self.rollout_buffer.qsize()):
+                    # Fill the rollout buffer with sample rollouts to match the required rollouts
+                    rollout = self.sample_rollout_group[
+                        idx % len(self.sample_rollout_group)
+                    ]
+                    self.rollout_buffer.put(rollout)
+                    self.remain_samples_num += 1
+                assert (
+                    self.rollout_buffer.qsize() == require_rollouts_num
+                ), f"[Controller] Rollout buffer size {self.rollout_buffer.qsize()} is not equal to required rollouts {require_rollouts_num}, please check the implementation of `fill_rollouts_for_one_batch`"
+
     def get_all_atoms_arrived_replicas(self) -> List[Replica]:
         """
         Get all the replicas that have all atoms arrived.
@@ -566,6 +597,28 @@ class PolicyStatusManager:
                     rollout.completion = rollout.completion + self.tokenizer.eos_token
         self.rollout_buffer.put(rollout)
         self.try_trigger_data_fetch_and_training()
+
+    def set_sample_rollout_group(self, rollous: List[Rollout]):
+        self.sample_rollout_group = rollous
+
+    def notify_rollout_end(self):
+        self.rollouts_end = True
+        arrived_replicas = self.get_all_atoms_arrived_replicas()
+        # no replicas remaining, do nothing
+        if len(arrived_replicas) == 0:
+            return
+        require_rollouts_num = self.config.train.train_batch_per_replica * len(
+            arrived_replicas
+        )
+        if (
+            self.rollout_buffer.qsize() < require_rollouts_num
+            and self.rollout_buffer.qsize() > 0
+            and self.all_ready_or_reduced()
+        ):
+            # At end if remaining rollouts still exist, we need to trigger one last data fetch and training by invoke `put_rollout``.
+            # One sample rollout can be put here, since the remaining rollouts are not enough and need to be filled to match one batch.
+            # Later in `try_trigger_data_fetch_and_training`, it will fill more rollouts to match the required one batch rollouts.
+            self.put_rollout(self.sample_rollout_group[0])
 
     def train_ack(
         self,
@@ -712,6 +765,9 @@ class PolicyStatusManager:
         else:
             items_count = self.config.train.train_batch_per_replica
             required_rollouts = items_count * len(arrived_replicas)
+            if self.rollouts_end and self.all_ready_or_reduced():
+                # If rollouts all ended and there are not enough rollouts in the buffer to proceed, we need fill the remaining rollouts to match the required rollouts
+                self.fill_rollouts_for_one_batch(required_rollouts)
             all_ready_or_reduced = self.all_ready_or_reduced() and (
                 self.rollout_buffer.qsize() >= required_rollouts
             )
