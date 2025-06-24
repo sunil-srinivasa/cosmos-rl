@@ -1,0 +1,286 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dataset &amp; Process &mdash; cosmos-rl 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Customized dataset/reward/packer" href="customization.html" />
+    <link rel="prev" title="Single node example" href="single_node_example.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            cosmos-rl
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="single_node_example.html">Single node example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Dataset &amp; Process</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#dataflow">Dataflow</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#pre-defined-datapacker">Pre-defined DataPacker</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#decoder-only-llm-packer">Decoder Only LLM Packer</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#qwen2-5-vlm-packer">Qwen2.5-VLM Packer</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="customization.html">Customized dataset/reward/packer</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Multi nodes training</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../multinodes/overview.html">Multi-node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../multinodes/dgxc_lepton.html">DGXC-Lepton Job</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Elastic &amp; Fault Tolerance</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../elastic/overview.html">Elastic Scaling and Fault Tolerance</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Async RL</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html#key-features">Key Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html#architecture">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html#putting-it-all-together">Putting It All Together</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Parallelism</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../parallelism/overview.html">Parallelism</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">cosmos-rl</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Dataset &amp; Process</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/quickstart/dataflow.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="dataset-process">
+<h1>Dataset &amp; Process<a class="headerlink" href="#dataset-process" title="Link to this heading"></a></h1>
+<section id="dataflow">
+<h2>Dataflow<a class="headerlink" href="#dataflow" title="Link to this heading"></a></h2>
+<img alt="../_images/data_flow.png" src="../_images/data_flow.png" />
+<p>As the above figure shows, there are three data-flow pipelines:</p>
+<ol class="arabic simple">
+<li><dl class="simple">
+<dt><strong>Dataset -&gt; Rollout</strong></dt><dd><p>In this stage, one need to define the data transformation logic from raw dataset item into what rollout engine needs. Typically the target data format is defined by rollout engine (i.e. <a class="reference external" href="https://github.com/vllm-project/vllm">vLLM</a>)</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><strong>Rollout completion -&gt; Controller</strong>:</dt><dd><p>In this stage, rollout engines finish the generation task and return the results back to controller.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><strong>Controller -&gt; Policy</strong>:</dt><dd><p>Importantly, <strong>cosmos-rl</strong> framework is model-agnostic. So there should be some data transformation pipeline here to ensure that the correct data format required by policy models is fed into them.</p>
+</dd>
+</dl>
+</li>
+</ol>
+<p>The interface of such data transformation pipeline is defined as a <cite>DataPacker</cite> class:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">class</span><span class="w"> </span><span class="nc">DataPacker</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_rollout_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Convert sample to data format required by the rollout engine (e.g. vllm)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;This method should be implemented by the subclass&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">rollout_collate_fn</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">items</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Collate the rollout inputs into a mini-batch for rollout engine</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">items</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_policy_input</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">sample</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+        <span class="n">rollout_output</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Stage for processing samples &amp; rollout output before collating them into a mini-batch</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;This method should be implemented by the subclass&quot;</span><span class="p">)</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">policy_compute_max_len</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">processed_samples</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute the maximum sequence length of the mini-batch</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;This method should be implemented by the subclass&quot;</span><span class="p">)</span>
+
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">policy_collate_fn</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">processed_samples</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span>
+        <span class="n">computed_max_len</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Collate the processed samples into a mini-batch,</span>
+<span class="sd">        the output will be fed into the policy model for training</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;This method should be implemented by the subclass&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">get_rollout_input</span></code>:</dt><dd><p>Convert dataset row into the format required by the rollout engine. Typically, <a class="reference external" href="https://github.com/vllm-project/vllm">vLLM</a> requires raw string as prompt input for LLM.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">rollout_collate_fn</span></code>:</dt><dd><p>Collate the output from <code class="docutils literal notranslate"><span class="pre">get_rollout_input</span></code> into a mini-batch for rollout engine.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">get_policy_input</span></code>:</dt><dd><p>Convert <code class="docutils literal notranslate"><span class="pre">(dataset_row,</span> <span class="pre">rollout_output)</span></code> into the format required by the policy model.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">policy_collate_fn</span></code>:</dt><dd><p>Collate the output from <code class="docutils literal notranslate"><span class="pre">get_policy_input</span></code> into a mini-batch accepted by policy model.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">policy_compute_max_len</span></code>:</dt><dd><p>Compute the maximum sequence length of a list of processed samples. This is required by <cite>Trainer</cite> to determine the padding length of the mini-batch.</p>
+</dd>
+</dl>
+</li>
+</ul>
+</section>
+<section id="pre-defined-datapacker">
+<h2>Pre-defined DataPacker<a class="headerlink" href="#pre-defined-datapacker" title="Link to this heading"></a></h2>
+<section id="decoder-only-llm-packer">
+<h3>Decoder Only LLM Packer<a class="headerlink" href="#decoder-only-llm-packer" title="Link to this heading"></a></h3>
+<p>Fortunately, <strong>cosmos-rl</strong> provides a default implementation <a class="reference external" href="#">decoder_only_llm_packer.py</a> for <cite>Decoder Only LLMs</cite> including:</p>
+<ol class="arabic simple">
+<li><p>Llama</p></li>
+<li><p>Qwen2.5</p></li>
+<li><p>Qwen3</p></li>
+<li><p>Qwen3-MoE</p></li>
+<li><p>Deepseek-v3</p></li>
+</ol>
+<p>All users need to do is to return the row of dataset as either:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">str</span></code>: as the raw text prompt</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Conversation</span> <span class="pre">List</span></code>: data packer will convert the conversation list into a raw text prompt by applying the pre-defined chat template.</p>
+<blockquote>
+<div><div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
+     <span class="p">{</span>
+         <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span>
+         <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="s2">&quot;What is the capital of France?&quot;</span>
+     <span class="p">},</span>
+ <span class="p">]</span>
+</pre></div>
+</div>
+</div></blockquote>
+</li>
+</ul>
+</section>
+<section id="qwen2-5-vlm-packer">
+<h3>Qwen2.5-VLM Packer<a class="headerlink" href="#qwen2-5-vlm-packer" title="Link to this heading"></a></h3>
+<p>We also add a <a class="reference external" href="#">qwen2_5_vlm_packer.py</a> for <a class="reference external" href="https://github.com/QwenLM/Qwen2.5-VL">Qwen2.5-VL</a> model to demonstrate how to add support for <cite>Multi-modal LLMs</cite>/<cite>Any Customized Model</cite>.</p>
+<p>This data packer requires the data row returned by dataset to be specific format:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="p">[</span>
+    <span class="p">{</span>
+        <span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="p">[</span>
+            <span class="p">{</span>
+                <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;image&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;image&quot;</span><span class="p">:</span> <span class="s2">&quot;https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen-VL/assets/demo.jpeg&quot;</span><span class="p">,</span>
+            <span class="p">},</span>
+            <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;text&quot;</span><span class="p">,</span> <span class="s2">&quot;text&quot;</span><span class="p">:</span> <span class="s2">&quot;Describe this image.&quot;</span><span class="p">},</span>
+        <span class="p">],</span>
+    <span class="p">}</span>
+<span class="p">]</span>
+</pre></div>
+</div>
+<p>Rollout and Policy would transform the above data row into the format required by the rollout and policy model.</p>
+<p>For implementation details, check <a class="reference external" href="#">qwen2_5_vlm_packer.py</a>.</p>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="single_node_example.html" class="btn btn-neutral float-left" title="Single node example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="customization.html" class="btn btn-neutral float-right" title="Customized dataset/reward/packer" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -1,0 +1,222 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Elastic Scaling and Fault Tolerance &mdash; cosmos-rl 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Overview" href="../async/overview.html" />
+    <link rel="prev" title="DGXC-Lepton Job" href="../multinodes/dgxc_lepton.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            cosmos-rl
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/single_node_example.html">Single node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/dataflow.html">Dataset &amp; Process</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/customization.html">Customized dataset/reward/packer</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Multi nodes training</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../multinodes/overview.html">Multi-node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../multinodes/dgxc_lepton.html">DGXC-Lepton Job</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Elastic &amp; Fault Tolerance</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Elastic Scaling and Fault Tolerance</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#elastic-scaling">Elastic Scaling</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#demo-elastic-scaling-in-action">Demo: Elastic Scaling in Action</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#fault-tolerance">Fault Tolerance</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Async RL</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html#key-features">Key Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html#architecture">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../async/overview.html#putting-it-all-together">Putting It All Together</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Parallelism</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../parallelism/overview.html">Parallelism</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">cosmos-rl</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Elastic Scaling and Fault Tolerance</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/elastic/overview.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="elastic-scaling-and-fault-tolerance">
+<h1>Elastic Scaling and Fault Tolerance<a class="headerlink" href="#elastic-scaling-and-fault-tolerance" title="Link to this heading"></a></h1>
+<p>Cosmos-RL supports <strong>elastic scaling</strong> and <strong>fault tolerance</strong> for RL jobs. This document provides a detailed explanation of how these features work.</p>
+<section id="elastic-scaling">
+<h2>Elastic Scaling<a class="headerlink" href="#elastic-scaling" title="Link to this heading"></a></h2>
+<p>Cosmos-RL allows running multiple <strong>replicas</strong> across <strong>multiple nodes</strong>, for both <strong>Policy</strong> and <strong>Rollout</strong> components. Each replica shares the same parallelism configuration. When a replica starts, only the controller is aware of it, and it will publish commands to existing replicas to perform operations such as building global NCCL meshes, weight updates, etc.</p>
+<p>Cosmos-RL supports <strong>elastic launching</strong> of replicas, enabling users to dynamically add or remove replicas during execution. The system handles necessary coordination automatically.</p>
+<p>### Replica Initialization Modes</p>
+<p>There are two initialization modes based on the configuration field <cite>n_init_replicas</cite>:</p>
+<ol class="arabic simple">
+<li><p><strong>`n_init_replicas = N &gt; 1`</strong>
+Cosmos-RL will wait until <cite>N</cite> replicas have joined before proceeding, and will treat later replicas as dynamic.</p></li>
+<li><p><strong>`n_init_replicas = 1` (default)</strong>
+Cosmos-RL immediately treats the first launched replica as active and dynamically integrates subsequent replicas.</p></li>
+</ol>
+<p>Policy and Rollout components each maintain their own <cite>n_init_replicas</cite> setting, defaulting to <cite>1</cite>.</p>
+<p>### Policy Replica Initialization Flow</p>
+<ol class="arabic simple">
+<li><p>Users can launch policy replicas one by one.</p></li>
+<li><p>Training begins only <strong>after</strong> <cite>N</cite> replicas have launched.</p></li>
+<li><p>The <strong>first</strong> replica performs weight initialization (e.g., from checkpoint or Hugging Face model).</p></li>
+<li><p>Once <cite>N</cite> replicas are active:
+- The controller sends a <cite>BuildMesh</cite> command.
+- A selected weight-initialized replica broadcasts weights to others.</p></li>
+<li><p>The policy group is now ready to begin the RL workflow.</p></li>
+</ol>
+<p>### Rollout Replica Initialization Flow</p>
+<ol class="arabic simple">
+<li><p>Rollout replicas are also launched one by one.</p></li>
+<li><p>Only the <strong>first</strong> rollout replica starts generating rollouts initially.</p></li>
+<li><p>It synchronizes weights from an initialized policy replica.</p></li>
+<li><p>Once <cite>N</cite> rollout replicas are active:
+- The controller sends a <cite>BuildMesh</cite> command.
+- The first rollout replica broadcasts weights to others.</p></li>
+<li><p>All rollout replicas now participate in rollout generation.</p></li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For <cite>n_init_replicas = 1</cite>, the flow is the same with <cite>N = 1</cite>.</p>
+</div>
+<p>### Dynamically Launched Replicas</p>
+<p>Cosmos-RL supports adding new replicas during runtime. These replicas will be integrated into the RL workflow as follows:</p>
+<ul class="simple">
+<li><p><strong>Policy Side</strong>
+- Controller sends a <cite>BuildMesh</cite> command.
+- A chosen initialized replica sends weights to the new one (via policy-policy unicast).</p></li>
+<li><p><strong>Rollout Side</strong>
+- Controller sends a <cite>BuildMesh</cite> command.
+- A chosen initialized rollout replica broadcasts weights to the new one (via rollout-rollout broadcast).</p></li>
+</ul>
+<p>After that, the new replica is fully integrated.</p>
+</section>
+<section id="demo-elastic-scaling-in-action">
+<h2>Demo: Elastic Scaling in Action<a class="headerlink" href="#demo-elastic-scaling-in-action" title="Link to this heading"></a></h2>
+<p>### Step 1: Launch Controller</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">./</span><span class="n">tools</span><span class="o">/</span><span class="n">launch_controller</span><span class="o">.</span><span class="n">sh</span> <span class="o">--</span><span class="n">port</span> <span class="mi">8080</span> <span class="o">--</span><span class="n">config</span> <span class="o">./</span><span class="n">configs</span><span class="o">/</span><span class="n">qwen3</span><span class="o">/</span><span class="n">qwen3</span><span class="o">-</span><span class="mi">8</span><span class="n">b</span><span class="o">-</span><span class="n">p</span><span class="o">-</span><span class="n">tp4</span><span class="o">-</span><span class="n">r</span><span class="o">-</span><span class="n">tp2</span><span class="o">-</span><span class="n">pp1</span><span class="o">-</span><span class="n">grpo</span><span class="o">.</span><span class="n">toml</span>
+</pre></div>
+</div>
+<p>### Step 2: Launch Initial Replicas (Assuming 8-GPU machine)</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Launch 1 policy replica</span>
+<span class="n">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span> <span class="n">COSMOS_CONTROLLER_HOST</span><span class="o">=</span><span class="n">localhost</span><span class="p">:</span><span class="mi">8080</span> <span class="o">./</span><span class="n">tools</span><span class="o">/</span><span class="n">launch_replica</span><span class="o">.</span><span class="n">sh</span> <span class="o">--</span><span class="n">ngpus</span> <span class="mi">2</span> <span class="o">--</span><span class="nb">type</span> <span class="n">policy</span>
+
+<span class="c1"># Launch 1 rollout replica</span>
+<span class="n">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span> <span class="n">COSMOS_CONTROLLER_HOST</span><span class="o">=</span><span class="n">localhost</span><span class="p">:</span><span class="mi">8080</span> <span class="o">./</span><span class="n">tools</span><span class="o">/</span><span class="n">launch_replica</span><span class="o">.</span><span class="n">sh</span> <span class="o">--</span><span class="n">ngpus</span> <span class="mi">2</span> <span class="o">--</span><span class="nb">type</span> <span class="n">rollout</span>
+</pre></div>
+</div>
+<p>Wait a moment to observe the initial RL workflow and check the status in the controller’s web UI.</p>
+<p>### Step 3: Add More Replicas Dynamically</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># Add 1 more policy replica</span>
+<span class="n">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span> <span class="n">COSMOS_CONTROLLER_HOST</span><span class="o">=</span><span class="n">localhost</span><span class="p">:</span><span class="mi">8080</span> <span class="o">./</span><span class="n">tools</span><span class="o">/</span><span class="n">launch_replica</span><span class="o">.</span><span class="n">sh</span> <span class="o">--</span><span class="n">ngpus</span> <span class="mi">2</span> <span class="o">--</span><span class="nb">type</span> <span class="n">policy</span>
+
+<span class="c1"># Add 1 more rollout replica</span>
+<span class="n">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span><span class="mi">7</span> <span class="n">COSMOS_CONTROLLER_HOST</span><span class="o">=</span><span class="n">localhost</span><span class="p">:</span><span class="mi">8080</span> <span class="o">./</span><span class="n">tools</span><span class="o">/</span><span class="n">launch_replica</span><span class="o">.</span><span class="n">sh</span> <span class="o">--</span><span class="n">ngpus</span> <span class="mi">2</span> <span class="o">--</span><span class="nb">type</span> <span class="n">rollout</span>
+</pre></div>
+</div>
+<p>You will see the new replicas appear in the web UI. Now, all four replicas (2 policy + 2 rollout) are active and working in sync.</p>
+</section>
+<section id="fault-tolerance">
+<h2>Fault Tolerance<a class="headerlink" href="#fault-tolerance" title="Link to this heading"></a></h2>
+<p>Cosmos-RL maintains heartbeat communication between the controller and all replicas.</p>
+<p>If either:</p>
+<ul class="simple">
+<li><p>a replica fails to send heartbeats within <cite>COSMOS_HEARTBEAT_TIMEOUT</cite> (default is 5 minutes) seconds</p></li>
+<li><p>NCCL operation times out</p></li>
+</ul>
+<p>the controller will consider it offline and remove it from the NCCL mesh. So it won’t block the ongoing RL workflow.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../multinodes/dgxc_lepton.html" class="btn btn-neutral float-left" title="DGXC-Lepton Job" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../async/overview.html" class="btn btn-neutral float-right" title="Overview" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

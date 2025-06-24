@@ -1,0 +1,224 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Overview &mdash; cosmos-rl 0.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=2709fde1"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Parallelism" href="../parallelism/overview.html" />
+    <link rel="prev" title="Elastic Scaling and Fault Tolerance" href="../elastic/overview.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            cosmos-rl
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/single_node_example.html">Single node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/dataflow.html">Dataset &amp; Process</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/customization.html">Customized dataset/reward/packer</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Multi nodes training</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../multinodes/overview.html">Multi-node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../multinodes/dgxc_lepton.html">DGXC-Lepton Job</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Elastic &amp; Fault Tolerance</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../elastic/overview.html">Elastic Scaling and Fault Tolerance</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Async RL</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Overview</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#key-features">Key Features</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#architecture">Architecture</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#disaggregated-policy-rollout-workers">Disaggregated Policy &amp; Rollout Workers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#unblocking-weight-synchronization">Unblocking Weight Synchronization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#high-performance-weight-transfer">High-Performance Weight Transfer</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="#putting-it-all-together">Putting It All Together</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Parallelism</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../parallelism/overview.html">Parallelism</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">cosmos-rl</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Overview</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/async/overview.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="overview">
+<h1>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h1>
+<p>Cosmos-RL is a fully native PyTorch, distributed reinforcement-learning framework built around a single, lightweight controller. By decoupling policy training from environment rollouts, it achieves:</p>
+<ul class="simple">
+<li><p>Seamless scalability to thousands of GPUs</p></li>
+<li><p>Modular, easy-to-extend design</p></li>
+<li><p>Higher throughput via fully asynchronous execution</p></li>
+</ul>
+</section>
+<section id="key-features">
+<h1>Key Features<a class="headerlink" href="#key-features" title="Link to this heading"></a></h1>
+<blockquote>
+<div><ul class="simple">
+<li><p>Single-controller architecture
+– Coordinates all workers, eliminates heavyweight orchestration layers</p></li>
+<li><p>Native PyTorch
+– Leverages familiar APIs and tooling; no custom C++/CUDA kernels required</p></li>
+<li><p>Asynchronous, parallel policy and rollout
+– Maximizes hardware utilization; rollouts never sleep while the policy trains</p></li>
+<li><p>Fine-grained scaling
+– Independently scale policy (training) and rollout (data generation) workers</p></li>
+</ul>
+</div></blockquote>
+</section>
+<section id="architecture">
+<h1>Architecture<a class="headerlink" href="#architecture" title="Link to this heading"></a></h1>
+<section id="disaggregated-policy-rollout-workers">
+<h2>Disaggregated Policy &amp; Rollout Workers<a class="headerlink" href="#disaggregated-policy-rollout-workers" title="Link to this heading"></a></h2>
+<p>In Cosmos-RL, policy trainers and rollout actors run as separate worker pools, each of which can live on different hardware:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Flexibility
+– Spin up rollout workers on cost-effective GPUs (e.g. L40s)
+– Reserve high-end accelerators (e.g. H100s) for policy training</p></li>
+<li><p>Scalability
+– Scale the data-generation layer independently when rollouts become the bottleneck</p></li>
+<li><p>Performance
+– True parallelism: no idle time offloading model checkpoints between tasks</p></li>
+</ul>
+</div></blockquote>
+</section>
+<section id="unblocking-weight-synchronization">
+<h2>Unblocking Weight Synchronization<a class="headerlink" href="#unblocking-weight-synchronization" title="Link to this heading"></a></h2>
+<p>Policy workers periodically push updated model weights to rollout actors. This happens every
+<code class="docutils literal notranslate"><span class="pre">config.train.sync_weight_interval</span></code> iterations:</p>
+<blockquote>
+<div><ul>
+<li><p>Rollout side</p>
+<img alt="Rollout Worker Flow" src="../_images/rollout.png" />
+<p>Rollout tasks are token-granular. Upon receiving a sync request, a worker will pause its current rollout at the next token boundary, apply the new weights, and resume immediately.</p>
+</li>
+<li><p>Policy side</p>
+<img alt="Policy Worker Flow" src="../_images/policy.png" />
+<p>Weight pushes are handled asynchronously so that training loops never stall.</p>
+</li>
+</ul>
+</div></blockquote>
+</section>
+<section id="high-performance-weight-transfer">
+<h2>High-Performance Weight Transfer<a class="headerlink" href="#high-performance-weight-transfer" title="Link to this heading"></a></h2>
+<p>Transferring large models across machines presents unique challenges:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Network topologies vary (InfiniBand, Ethernet, NVLink).</p></li>
+<li><p>Source and target may use different parallelisms (tensor-, pipeline-, or FSDP).</p></li>
+</ol>
+</div></blockquote>
+<p>Cosmos-RL overcomes these via:</p>
+<blockquote>
+<div><ul>
+<li><p>RDMA-accelerated transfers over InfiniBand and NVLink</p></li>
+<li><p>A topology-aware weight-mapping algorithm that avoids global all-gather</p></li>
+<li><p>Minimal peak memory footprint during synchronization</p>
+<img alt="../_images/weight_p2p.png" src="../_images/weight_p2p.png" />
+</li>
+</ul>
+</div></blockquote>
+</section>
+</section>
+<section id="putting-it-all-together">
+<h1>Putting It All Together<a class="headerlink" href="#putting-it-all-together" title="Link to this heading"></a></h1>
+<p>By combining asynchronous execution, fine-grained rollout interruption, and optimized weight transfers, Cosmos-RL delivers a highly efficient, scalable RL training stack that:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>Keeps GPUs busy generating and consuming experience</p></li>
+<li><p>Scales linearly as you add more workers</p></li>
+<li><p>Requires zero custom kernels or external orchestration frameworks</p></li>
+</ul>
+</div></blockquote>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../elastic/overview.html" class="btn btn-neutral float-left" title="Elastic Scaling and Fault Tolerance" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../parallelism/overview.html" class="btn btn-neutral float-right" title="Parallelism" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
