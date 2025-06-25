@@ -45,11 +45,7 @@
               <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Single node example</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#one-click-solution">One-click solution</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#manual-launch">Manual launch</a></li>
-</ul>
-</li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Single node example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataflow.html">Dataset &amp; Process</a></li>
 <li class="toctree-l1"><a class="reference internal" href="customization.html">Customized dataset/reward/packer</a></li>
 </ul>
@@ -100,8 +96,6 @@
              
   <section id="single-node-example">
 <h1>Single node example<a class="headerlink" href="#single-node-example" title="Link to this heading"></a></h1>
-<section id="one-click-solution">
-<h2>One-click solution<a class="headerlink" href="#one-click-solution" title="Link to this heading"></a></h2>
 <p>This example demonstrates how to run <cite>Qwen3-8B</cite> on a single node with 8 GPUs.</p>
 <div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span> \
 <span class="go">    --config configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml \</span>
@@ -131,57 +125,6 @@
 <p class="admonition-title">Note</p>
 <p>You may encounter loss values of 0.0 because the GRPO advantage is zero. Since it is a toy math example, it is expected.</p>
 </div>
-</section>
-<section id="manual-launch">
-<h2>Manual launch<a class="headerlink" href="#manual-launch" title="Link to this heading"></a></h2>
-<p>Under the hood, the previous <cite>one-click</cite> script do the followings:</p>
-<ol class="arabic">
-<li><dl>
-<dt>Prepare the dataset:</dt><dd><ul class="simple">
-<li><p>Download the <a class="reference external" href="https://huggingface.co/datasets/openai/gsm8k/">GSM8K</a> dataset</p></li>
-<li><p>Extract prompt and reference answer using column names specified in the config file</p></li>
-</ul>
-<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="c1"># file content of `qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml`</span>
-<span class="nn">...</span>
-<span class="p p-Indicator">[</span><span class="nv">train.train_policy</span><span class="p p-Indicator">]</span>
-<span class="nn">...</span>
-<span class="l l-Scalar l-Scalar-Plain">dataset_name = &quot;openai/gsm8k&quot;</span><span class="w"> </span><span class="c1"># the dataset name</span>
-<span class="l l-Scalar l-Scalar-Plain">dataset_subset = &quot;main&quot;</span><span class="w"> </span><span class="c1"># the subset name</span>
-<span class="l l-Scalar l-Scalar-Plain">dataset_train_split = &quot;train&quot;</span><span class="w"> </span><span class="c1"># the train split name</span>
-<span class="l l-Scalar l-Scalar-Plain">prompt_column_name = &quot;question&quot;</span><span class="w"> </span><span class="c1"># column for prompt</span>
-<span class="l l-Scalar l-Scalar-Plain">response_column_name = &quot;answer&quot;</span><span class="w"> </span><span class="c1"># column for reference answer</span>
-<span class="nn">...</span>
-</pre></div>
-</div>
-</dd>
-</dl>
-</li>
-<li><dl class="simple">
-<dt>Launch processes:</dt><dd><ol class="arabic simple">
-<li><p>A controller process for coordinating the training process</p></li>
-<li><p>A policy replica with 4 processes</p></li>
-<li><p>Two rollout replicas each with 2 processes</p></li>
-</ol>
-</dd>
-</dl>
-</li>
-</ol>
-<p>Alternatively, all these processes can be launched manually by running the following commands:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># 1. Launch the controller process</span>
-./tools/launch_controller.sh<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span><span class="w"> </span>--config<span class="w"> </span>configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml
-
-<span class="c1"># Set env-var so that the following replicas know where the controller is located.</span>
-<span class="nb">export</span><span class="w"> </span><span class="nv">COSMOS_CONTROLLER_HOST</span><span class="o">=</span>localhost:8000
-
-<span class="c1"># 2. Launch the policy replica</span>
-<span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">0</span>,1,2,3<span class="w"> </span><span class="nv">COSMOS_CONTROLLER_HOST</span><span class="o">=</span>localhost:8000<span class="w"> </span>./tools/launch_replica.sh<span class="w"> </span>--type<span class="w"> </span>policy<span class="w"> </span>--ngpus<span class="w"> </span><span class="m">4</span>
-
-<span class="c1"># 3. Launch the rollout replicas</span>
-<span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">4</span>,5<span class="w"> </span>./tools/launch_replica.sh<span class="w"> </span>--type<span class="w"> </span>rollout<span class="w"> </span>--ngpus<span class="w"> </span><span class="m">2</span>
-<span class="nv">CUDA_VISIBLE_DEVICES</span><span class="o">=</span><span class="m">6</span>,7<span class="w"> </span>./tools/launch_replica.sh<span class="w"> </span>--type<span class="w"> </span>rollout<span class="w"> </span>--ngpus<span class="w"> </span><span class="m">2</span>
-</pre></div>
-</div>
-</section>
 </section>
 
 

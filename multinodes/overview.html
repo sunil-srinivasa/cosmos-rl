@@ -106,7 +106,7 @@
 <p>In this example, 4 policy replica with each of 4 GPUs and two rollout replica with each of 2 GPUs are launched.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1">### On node A</span>
 <span class="c1"># 1. Launch the controller process</span>
-./tools/launch_controller.sh<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span><span class="w"> </span>--config<span class="w"> </span>configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml
+./cosmos_rl/launcher/launch_controller.sh<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span><span class="w"> </span>--config<span class="w"> </span>configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml
 
 <span class="nb">export</span><span class="w"> </span><span class="nv">COSMOS_CONTROLLER_HOST</span><span class="o">=</span>localhost:8000
 
