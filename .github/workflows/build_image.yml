@@ -1,4 +1,4 @@
-name: Build Docker Image
+name: build-image
 
 permissions:
   contents: read
@@ -51,9 +51,9 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=sha,prefix={{ branch }}-
-            type=raw,value=latest,enable={{ is_default_branch }}
-            type=raw,value=${{ inputs.tag }},enable={{ inputs.tag != '' }}
+            type=sha,prefix=${{ branch }}-
+            type=raw,value=latest,enable=${{ is_default_branch }}
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
