@@ -6,12 +6,15 @@ on:
   pull_request:
     branches: [ "**" ]
 
+env:
+  IMAGE_TAG: test$(git rev-parse --short HEAD)
+
 jobs:
   build-image:
     uses: ./.github/workflows/build_image.yml
     with:
       runs-on: self-hosted
-      tag: ${{ github.sha }}
+      tag: ${{ env.IMAGE_TAG }}
     secrets: inherit 
 
   test:
@@ -24,9 +27,10 @@ jobs:
           python-version: '3.10'
 
       - name: Run tests
-        uses: kohlerdominik/docker-run-action@v2
+        uses: addnab/docker-run-action@v3
         with:
-          image: ghcr.io/nvidia-cosmos/${{ github.repository }}/${{ github.sha }}
+          registry: ghcr.io
+          image: nvidia-cosmos/${{ github.repository }}/${{ env.IMAGE_TAG }}
           options: |
             --gpus all
           run: |
