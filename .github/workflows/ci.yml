@@ -10,12 +10,12 @@ jobs:
   build-image:
     uses: ./.github/workflows/build_image.yml
     with:
-      runs-on: ubuntu-latest
+      runs-on: self-hosted
       tag: ${{ github.sha }}
     secrets: inherit 
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-image
     steps:     
       - name: Set up Python
