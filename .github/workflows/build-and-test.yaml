@@ -29,31 +29,29 @@ jobs:
           docker build -t ${{ steps.vars.outputs.image_tag }} .
 
       - name: Run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: ${{ steps.vars.outputs.image_tag }}
-          options: |
-            --gpus all
-            --shm-size=24G
-            -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests:ro
-            -e PYTHONPYCACHEPREFIX=/tmp/pycache
-            -w /workspace/cosmos-rl
-          shell: /bin/bash
-          run: |
-            set -ex
+        run: |
+          set -ex
 
-            # run tests
-            python tests/test_cache.py
-            # torchrun --nproc_per_node=4 tests/test_comm.py
-            python tests/test_fp8.py
-            # python tests/test_grad_allreduce.py
-            # python tests/test_high_availability_nccl.py
-            python tests/test_nccl_collectives.py
-            # python tests/test_nccl_timeout.py
-            python tests/test_parallel_map.py
-            python tests/test_policy_to_policy.py
-            python tests/test_policy_to_rollout.py
-            python tests/test_process_flow.py
+          DOCKER_RUN="docker run \
+            --gpus all \
+            --shm-size=24G \
+            -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests:ro \
+            -e PYTHONPYCACHEPREFIX=/tmp/pycache \
+            -w /workspace/cosmos-rl \
+            ${{ steps.vars.outputs.image_tag }}"
+
+          # run tests
+          ${DOCKER_RUN} python tests/test_cache.py
+          # ${DOCKER_RUN} torchrun --nproc_per_node=4 tests/test_comm.py
+          ${DOCKER_RUN} python tests/test_fp8.py
+          # ${DOCKER_RUN} python tests/test_grad_allreduce.py
+          # ${DOCKER_RUN} python tests/test_high_availability_nccl.py
+          ${DOCKER_RUN} python tests/test_nccl_collectives.py
+          # ${DOCKER_RUN} python tests/test_nccl_timeout.py
+          ${DOCKER_RUN} python tests/test_parallel_map.py
+          ${DOCKER_RUN} python tests/test_policy_to_policy.py
+          ${DOCKER_RUN} python tests/test_policy_to_rollout.py
+          ${DOCKER_RUN} python tests/test_process_flow.py
 
       - name: Cleanup
         if: always()
