@@ -18,10 +18,6 @@ jobs:
     runs-on: self-hosted
     needs: build-image
     steps:
-      - uses: actions/checkout@v3
-        with:
-          submodules: recursive
-
       - name: Run tests
         uses: addnab/docker-run-action@v3
         with:
@@ -31,11 +27,12 @@ jobs:
           image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
-            -v ${{ github.workspace }}:/workspace_ci/cosmos-rl
           shell: /bin/bash
           run: |
             # prepare code
-            cd /workspace_ci/cosmos-rl
+            git clone https://github.com/${{ github.repository }}.git
+            cd cosmos-rl
+            git checkout ${{ github.sha }}
 
             # run tests
             python tests/test_cache.py
