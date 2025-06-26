@@ -15,29 +15,25 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Compute Vars
+        id: vars
+        run: |
+          echo "image_tag=${{ github.repository }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
       - name: Build image
         run: |
-          docker build -t ${{ github.repository }}:${{ github.sha }} .
+          docker build -t ${{ steps.vars.outputs.image_tag }} .
 
       - name: Run tests
         uses: addnab/docker-run-action@v3
         with:
-          # registry: ghcr.io
-          # username: ${{ github.actor }}
-          # password: ${{ secrets.GITHUB_TOKEN }}
-          image: ${{ github.repository }}:${{ github.sha }}
+          image: ${{ steps.vars.outputs.image_tag }}
           options: |
             --gpus all
-            -v ${{ github.workspace }}:/tmp/cosmos-rl:ro
+            -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests
+            -w /workspace/cosmos-rl
           shell: /bin/bash
           run: |
-            # prepare code
-            
-            # In this case, the self-hosted runner run as normal user, but container run as root, 
-            # so we need to copy the code to a new directory to avoid permission issues
-            cp -r /tmp/cosmos-rl /tmp/cosmos-rl-test
-            cd /tmp/cosmos-rl-test
-
             # run tests
             python tests/test_cache.py
             # torchrun --nproc_per_node=4 tests/test_comm.py
@@ -51,3 +47,9 @@ jobs:
             # python tests/test_policy_to_rollout.py
             # python tests/test_process_flow.py
 
+      - name: cleanup
+        if: always()
+        run: |
+          docker stop $(docker ps -a -q) || true
+          docker rmi -f "${{ steps.vars.outputs.image_tag }}" || true
+          sudo git clean -xffd || true
