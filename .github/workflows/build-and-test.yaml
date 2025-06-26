@@ -32,7 +32,7 @@ jobs:
         run: |
           set -ex
 
-          DOCKER_RUN="docker run \
+          DOCKER_RUN="timeout 10m docker run \
             --gpus all \
             --shm-size=24G \
             -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests:ro \
