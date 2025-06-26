@@ -20,7 +20,7 @@ import subprocess
 import sys
 from multiprocessing import shared_memory
 import numpy as np
-from tests.launch_test_worker import POLICY_WORLD_SIZE, ROLLOUT_WORLD_SIZE
+from launch_test_worker import POLICY_WORLD_SIZE, ROLLOUT_WORLD_SIZE
 from cosmos_rl.utils.pynccl import (
     create_nccl_uid,
 )
