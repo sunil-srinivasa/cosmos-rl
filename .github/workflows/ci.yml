@@ -28,5 +28,9 @@ jobs:
           options: |
             --gpus all
           run: |
+            # prepare code
+            git clone ${{ github.repositoryUrl }} -b ${{ github.ref_name }}
+            cd ${{ github.repository }}
+
             python tests/test_nccl_timeout.py
 
