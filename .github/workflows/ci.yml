@@ -31,21 +31,22 @@ jobs:
           image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
-            -v ${{ github.workspace }}:/workspace_ci
+            -v ${{ github.workspace }}:/workspace_ci/cosmos-rl
+          shell: /bin/bash
           run: |
             # prepare code
-            cd /workspace_ci
+            cd /workspace_ci/cosmos-rl
 
             # run tests
-            # python tests/test_cache.py
-            # python tests/test_comm.py
-            # python tests/test_fp8.py
+            python tests/test_cache.py
+            python tests/test_comm.py
+            python tests/test_fp8.py
             # python tests/test_grad_allreduce.py
-            # python tests/test_high_availability_nccl.py
-            # python tests/test_nccl_collectives.py
+            python tests/test_high_availability_nccl.py
+            python tests/test_nccl_collectives.py
             python tests/test_nccl_timeout.py
-            # python tests/test_parallel_map.py
-            # python tests/test_policy_to_policy.py
-            # python tests/test_policy_to_rollout.py
-            # python tests/test_process_flow.py
+            python tests/test_parallel_map.py
+            python tests/test_policy_to_policy.py
+            python tests/test_policy_to_rollout.py
+            python tests/test_process_flow.py
 
