@@ -7,14 +7,14 @@ on:
     branches: [ "**" ]
 
 env:
-  IMAGE_TAG: test$(git rev-parse --short HEAD)
+  IMAGETAG: test$(git rev-parse --short HEAD)
 
 jobs:
   build-image:
     uses: ./.github/workflows/build_image.yml
     with:
       runs-on: self-hosted
-      tag: ${{ env.IMAGE_TAG }}
+      tag: ${{ env.IMAGETAG }}
     secrets: inherit 
 
   test:
@@ -30,7 +30,7 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: nvidia-cosmos/${{ github.repository }}/${{ env.IMAGE_TAG }}
+          image: nvidia-cosmos/${{ github.repository }}/${{ env.IMAGETAG }}
           options: |
             --gpus all
           run: |
