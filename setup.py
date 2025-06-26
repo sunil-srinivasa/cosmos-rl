@@ -57,10 +57,10 @@ with open(os.path.join(os.path.dirname(__file__), "requirements.txt")) as f:
 
 setup(
     name="cosmos_rl",
-    version="0.1",
+    version="0.1.1",
     packages=setuptools.find_packages(),
     package_data={
-        "cosmos_rl": ["**/*.json", "**/*.toml"]
+        "cosmos_rl": ["**/*.json", "**/*.toml", "launcher/*.sh"]
     },
     entry_points={
         "console_scripts": [

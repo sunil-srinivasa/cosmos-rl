@@ -13,14 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cosmos_rl.policy.model import build_model
-from cosmos_rl.policy.config import Config as CosmosConfig
-from cosmos_rl.utils.wandb_logger import is_wandb_available, init_wandb
-from cosmos_rl.utils.parallelism import (
-    ParallelDims,
-    train_context,
-)
-from cosmos_rl.dispatcher.protocol import Role
 import json
 import os
 import torch
@@ -33,6 +25,11 @@ from cosmos_rl.utils.checkpoint import (
 )
 from transformers import AutoTokenizer, AutoConfig, AutoProcessor, GenerationConfig
 from cosmos_rl.policy.trainer.optm import build_optimizers, build_lr_schedulers
+from cosmos_rl.policy.model import build_model
+from cosmos_rl.policy.config import Config as CosmosConfig
+from cosmos_rl.utils.wandb_logger import is_wandb_available, init_wandb
+from cosmos_rl.utils.parallelism import ParallelDims
+from cosmos_rl.dispatcher.protocol import Role
 from cosmos_rl.comm.base import CommMixin
 from safetensors.torch import save_file
 from huggingface_hub import create_repo, upload_folder, whoami
@@ -137,7 +134,6 @@ class Trainer(CommMixin):
                 "Wandb is not available. Please install it to use wandb logging features."
             )
         # TODO(cjx): add `CompiledAutograd` support
-        self.context = train_context(False)
         self.optimizers = build_optimizers(self.model_parts, self.config)
 
         if self.config.train.fp8.enable_fp8:
