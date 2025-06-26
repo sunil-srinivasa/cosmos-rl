@@ -1,8 +1,5 @@
 name: CI
 
-env:
-  IMAGE_TAG: test$(git rev-parse --short HEAD)
-
 on:
   push:
     branches: [ main ]
@@ -10,16 +7,22 @@ on:
     branches: [ "**" ]
 
 jobs:
+  # 计算变量
+  preset-variables:
+    outputs:
+      image_tag: test$(git rev-parse --short HEAD)
+
   build-image:
+    needs: preset-variables
     uses: ./.github/workflows/build_image.yml
     with:
       runs-on: self-hosted
-      tag: ${{ env.IMAGE_TAG }}
+      tag: ${{ needs.preset-variables.outputs.image_tag }}
     secrets: inherit 
 
   test:
     runs-on: self-hosted
-    needs: build-image
+    needs: [preset-variables, build-image]
     steps:     
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -30,9 +33,9 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: nvidia-cosmos/${{ github.repository }}/${{ env.IMAGE_TAG }}
+          image: nvidia-cosmos/${{ github.repository }}:${{ needs.preset-variables.outputs.image_tag }}
           options: |
             --gpus all
-          run: |
-            python tests/test_nccl_timeout.py
+        run: |
+          python tests/test_nccl_timeout.py
 
