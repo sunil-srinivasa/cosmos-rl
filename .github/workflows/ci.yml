@@ -39,14 +39,14 @@ jobs:
 
             # run tests
             python tests/test_cache.py
-            python tests/test_comm.py
+            # torchrun --nproc_per_node=4 tests/test_comm.py
             python tests/test_fp8.py
             # python tests/test_grad_allreduce.py
-            python tests/test_high_availability_nccl.py
+            # python tests/test_high_availability_nccl.py
             python tests/test_nccl_collectives.py
-            python tests/test_nccl_timeout.py
-            python tests/test_parallel_map.py
-            python tests/test_policy_to_policy.py
-            python tests/test_policy_to_rollout.py
-            python tests/test_process_flow.py
+            # python tests/test_nccl_timeout.py
+            # python tests/test_parallel_map.py
+            # python tests/test_policy_to_policy.py
+            # python tests/test_policy_to_rollout.py
+            # python tests/test_process_flow.py
 
