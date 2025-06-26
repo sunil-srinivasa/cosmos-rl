@@ -6,12 +6,10 @@ on:
   pull_request:
     branches: [ "**" ]
 
-jobs:
-  # 计算变量
-  preset-variables:
-    outputs:
-      image_tag: test$(git rev-parse --short HEAD)
+env:
+  IMAGE_TAG: test$(git rev-parse --short HEAD)
 
+jobs:
   build-image:
     needs: preset-variables
     uses: ./.github/workflows/build_image.yml
@@ -22,7 +20,7 @@ jobs:
 
   test:
     runs-on: self-hosted
-    needs: [preset-variables, build-image]
+    needs: build-image
     steps:     
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -33,9 +31,9 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: nvidia-cosmos/${{ github.repository }}:${{ needs.preset-variables.outputs.image_tag }}
+          image: nvidia-cosmos/${{ github.repository }}:${{ env.IMAGE_TAG }}
           options: |
             --gpus all
-        run: |
-          python tests/test_nccl_timeout.py
+          run: |
+            python tests/test_nccl_timeout.py
 
