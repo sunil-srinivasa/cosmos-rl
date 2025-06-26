@@ -6,15 +6,12 @@ on:
   pull_request:
     branches: [ "**" ]
 
-env:
-  IMAGE_TAG: test-abcde
-
 jobs:
   build-image:
     uses: ./.github/workflows/build_image.yml
     with:
       runs-on: self-hosted
-      tag: ${{ env.IMAGE_TAG }}
+      tag: test${{ github.sha }}
     secrets: inherit 
 
   test:
@@ -30,7 +27,7 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: nvidia-cosmos/${{ github.repository }}:${{ env.IMAGE_TAG }}
+          image: nvidia-cosmos/${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
           run: |
