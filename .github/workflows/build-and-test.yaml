@@ -28,12 +28,12 @@ jobs:
           image: ${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
+            -v ${{ github.workspace }}:/tmp/cosmos-rl:ro
           shell: /bin/bash
           run: |
             # prepare code
-            git clone https://github.com/${{ github.repository }}.git
-            cd cosmos-rl
-            git checkout ${{ github.sha }}
+            cp -r /tmp/cosmos-rl /tmp/cosmos-rl-test
+            cd /tmp/cosmos-rl-test
 
             # run tests
             python tests/test_cache.py
