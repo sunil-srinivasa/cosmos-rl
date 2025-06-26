@@ -27,7 +27,7 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: nvidia-cosmos/${{ github.repository }}:test${{ github.sha }}
+          image: ${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
           run: |
