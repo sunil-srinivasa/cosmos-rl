@@ -14,15 +14,15 @@ jobs:
   build_and_test:
     runs-on: self-hosted
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
       - name: Compute Vars
         id: vars
         run: |
           echo "image_tag=${{ github.repository }}:${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Build image
         run: |
@@ -35,7 +35,8 @@ jobs:
           options: |
             --gpus all
             --shm-size=24G
-            -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests
+            -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests:ro
+            -e PYTHONPYCACHEPREFIX=/tmp/pycache
             -w /workspace/cosmos-rl
           shell: /bin/bash
           run: |
@@ -57,8 +58,4 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          set -ex
-
-          docker stop $(docker ps -a -q) || true
           docker rmi -f "${{ steps.vars.outputs.image_tag }}" || true
-          git clean -xffd || true
