@@ -32,6 +32,9 @@ jobs:
           shell: /bin/bash
           run: |
             # prepare code
+            
+            # In this case, the self-hosted runner run as normal user, but container run as root, 
+            # so we need to copy the code to a new directory to avoid permission issues
             cp -r /tmp/cosmos-rl /tmp/cosmos-rl-test
             cd /tmp/cosmos-rl-test
 
