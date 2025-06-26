@@ -30,7 +30,7 @@ jobs:
           run: |
             # prepare code
             git clone ${{ github.repositoryUrl }} -b ${{ github.ref_name }}
-            cd ${{ github.repository }}
+            cd cosmos-rl
 
             python tests/test_nccl_timeout.py
 
