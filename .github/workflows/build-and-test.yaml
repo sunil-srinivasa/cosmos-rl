@@ -17,7 +17,7 @@ jobs:
 
       - name: Build image
         run: |
-          docker build -t ${{ github.repository }}:test${{ github.sha }} .
+          docker build -t ${{ github.repository }}:${{ github.sha }} .
 
       - name: Run tests
         uses: addnab/docker-run-action@v3
@@ -25,7 +25,7 @@ jobs:
           # registry: ghcr.io
           # username: ${{ github.actor }}
           # password: ${{ secrets.GITHUB_TOKEN }}
-          image: ${{ github.repository }}:test${{ github.sha }}
+          image: ${{ github.repository }}:${{ github.sha }}
           options: |
             --gpus all
             -v ${{ github.workspace }}:/tmp/cosmos-rl:ro
