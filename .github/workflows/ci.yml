@@ -18,6 +18,10 @@ jobs:
     runs-on: self-hosted
     needs: build-image
     steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+
       - name: Run tests
         uses: addnab/docker-run-action@v3
         with:
@@ -27,10 +31,21 @@ jobs:
           image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
+            -v ${{ github.workspace }}:/workspace_ci
           run: |
             # prepare code
-            git clone ${{ github.repositoryUrl }} -b ${{ github.ref_name }}
-            cd cosmos-rl
+            cd /workspace_ci
 
+            # run tests
+            # python tests/test_cache.py
+            # python tests/test_comm.py
+            # python tests/test_fp8.py
+            # python tests/test_grad_allreduce.py
+            # python tests/test_high_availability_nccl.py
+            # python tests/test_nccl_collectives.py
             python tests/test_nccl_timeout.py
+            # python tests/test_parallel_map.py
+            # python tests/test_policy_to_policy.py
+            # python tests/test_policy_to_rollout.py
+            # python tests/test_process_flow.py
 
