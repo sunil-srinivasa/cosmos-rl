@@ -29,31 +29,31 @@ jobs:
           docker build -t ${{ steps.vars.outputs.image_tag }} .
 
       - name: Run tests
-        uses: addnab/docker-run-action@v3
-        with:
-          image: ${{ steps.vars.outputs.image_tag }}
-          options: |
-            --gpus all
-            -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests
-            -w /workspace/cosmos-rl
-          shell: /bin/bash
-          run: |
-            # run tests
-            python tests/test_cache.py
-            # torchrun --nproc_per_node=4 tests/test_comm.py
-            python tests/test_fp8.py
-            # python tests/test_grad_allreduce.py
-            # python tests/test_high_availability_nccl.py
-            python tests/test_nccl_collectives.py
-            # python tests/test_nccl_timeout.py
-            python tests/test_parallel_map.py
-            python tests/test_policy_to_policy.py
-            python tests/test_policy_to_rollout.py
-            python tests/test_process_flow.py
+        run: |
+          set -ex
 
-      - name: cleanup
+          # docker run command with flags
+          DOCKER_RUN=docker run --rm --gpus=all --shm-size=24G \
+              -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests \
+              -w /workspace/cosmos-rl \
+              ${{ steps.vars.outputs.image_tag }}
+
+          ${DOCKER_RUN} python tests/test_cache.py
+          # ${DOCKER_RUN} torchrun --nproc_per_node=4 tests/test_comm.py
+          ${DOCKER_RUN} python tests/test_fp8.py
+          # ${DOCKER_RUN} python tests/test_grad_allreduce.py
+          # ${DOCKER_RUN} python tests/test_high_availability_nccl.py
+          ${DOCKER_RUN} python tests/test_nccl_collectives.py
+          # ${DOCKER_RUN} python tests/test_nccl_timeout.py
+          ${DOCKER_RUN} python tests/test_parallel_map.py
+          ${DOCKER_RUN} python tests/test_policy_to_policy.py
+          ${DOCKER_RUN} python tests/test_policy_to_rollout.py
+          ${DOCKER_RUN} python tests/test_process_flow.py
+
+      - name: Cleanup
         if: always()
         run: |
+          set -ex
           docker stop $(docker ps -a -q) || true
           docker rmi -f "${{ steps.vars.outputs.image_tag }}" || true
           sudo git clean -xffd || true
