@@ -29,7 +29,7 @@ jobs:
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: ${{ github.repository }}:test${{ github.sha }}
+          image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
           run: |
