@@ -42,10 +42,10 @@ jobs:
             # python tests/test_high_availability_nccl.py
             python tests/test_nccl_collectives.py
             # python tests/test_nccl_timeout.py
-            # python tests/test_parallel_map.py
-            # python tests/test_policy_to_policy.py
-            # python tests/test_policy_to_rollout.py
-            # python tests/test_process_flow.py
+            python tests/test_parallel_map.py
+            python tests/test_policy_to_policy.py
+            python tests/test_policy_to_rollout.py
+            python tests/test_process_flow.py
 
       - name: cleanup
         if: always()
