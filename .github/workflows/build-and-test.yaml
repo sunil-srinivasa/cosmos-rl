@@ -29,16 +29,20 @@ jobs:
           docker build -t ${{ steps.vars.outputs.image_tag }} .
 
       - name: Run tests
+        id: tests
         run: |
           set -ex
 
-          DOCKER_RUN="timeout 10m docker run \
+          container_id=$(docker run -d --rm
             --gpus all \
             --shm-size=24G \
             -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests:ro \
             -e PYTHONPYCACHEPREFIX=/tmp/pycache \
             -w /workspace/cosmos-rl \
-            ${{ steps.vars.outputs.image_tag }}"
+            ${{ steps.vars.outputs.image_tag }} /bin/bash)
+
+          echo "container_id=${container_id}" >> $GITHUB_OUTPUT
+          DOCKER_RUN="timeout 10m docker run ${container_id}"
 
           # run tests
           ${DOCKER_RUN} python tests/test_cache.py
@@ -56,4 +60,5 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
+          docker stop "${{ steps.tests.outputs.image_tag }}" || true
           docker rmi -f "${{ steps.vars.outputs.image_tag }}" || true
