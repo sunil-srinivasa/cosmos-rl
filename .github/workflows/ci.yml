@@ -8,11 +8,15 @@ on:
 
 jobs:
   build-image:
-    uses: ./.github/workflows/build_image.yml
-    with:
-      runs-on: self-hosted
-      tag: test${{ github.sha }}
-    secrets: inherit 
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Build image
+        run: |
+          docker build -t ${{ github.repository }}:test${{ github.sha }} .
 
   test:
     runs-on: self-hosted
@@ -21,10 +25,10 @@ jobs:
       - name: Run tests
         uses: addnab/docker-run-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
+          # registry: ghcr.io
+          # username: ${{ github.actor }}
+          # password: ${{ secrets.GITHUB_TOKEN }}
+          image: ${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
           shell: /bin/bash
