@@ -24,7 +24,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          image: ${{ github.repository }}:test${{ github.sha }}
+          image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
           run: |
