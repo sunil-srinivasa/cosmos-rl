@@ -22,7 +22,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: nvidia-cosmos/${GITHUB_REPOSITORY}
+  IMAGE: nvidia-cosmos/${{ github.repository }}
 
 jobs:
   build:
