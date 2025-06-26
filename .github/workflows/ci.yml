@@ -7,9 +7,7 @@ on:
     branches: [ "**" ]
 
 env:
-  IMAGE_TAG: test$(git rev-parse --short HEAD)
-  REGISTRY: ghcr.io
-  IMAGE: nvidia-cosmos/${{ github.repository }}
+  IMAGE_TAG: test-abcde
 
 jobs:
   build-image:
