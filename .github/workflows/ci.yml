@@ -17,19 +17,14 @@ jobs:
   test:
     runs-on: self-hosted
     needs: build-image
-    steps:     
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
+    steps:
       - name: Run tests
         uses: addnab/docker-run-action@v3
         with:
           registry: ghcr.io
-          image: ghcr.io/${{ github.repository }}:test${{ github.sha }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          image: ${{ github.repository }}:test${{ github.sha }}
           options: |
             --gpus all
           run: |
