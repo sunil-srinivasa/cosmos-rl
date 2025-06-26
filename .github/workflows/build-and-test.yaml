@@ -39,6 +39,8 @@ jobs:
             -w /workspace/cosmos-rl
           shell: /bin/bash
           run: |
+            set -ex
+
             # run tests
             python tests/test_cache.py
             # torchrun --nproc_per_node=4 tests/test_comm.py
@@ -56,6 +58,7 @@ jobs:
         if: always()
         run: |
           set -ex
+
           docker stop $(docker ps -a -q) || true
           docker rmi -f "${{ steps.vars.outputs.image_tag }}" || true
           git clean -xffd || true
