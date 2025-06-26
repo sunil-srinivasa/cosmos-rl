@@ -8,6 +8,8 @@ on:
 
 env:
   IMAGE_TAG: test$(git rev-parse --short HEAD)
+  REGISTRY: ghcr.io
+  IMAGE: nvidia-cosmos/${{ github.repository }}
 
 jobs:
   build-image:
