@@ -382,6 +382,7 @@ def policy_to_policy_sync_common(
         Trainer.init_comm = dummy
         CommMixin.init_redis = dummy
         CommMixin.start_heartbeat = dummy
+        CommMixin.heartbeat_thread = None
         CommMixin.replica_name = policy_name
         CommMixin.remote_hosts = ["localhost:0"]
         CommMixin.shutdown_signal = threading.Event()
