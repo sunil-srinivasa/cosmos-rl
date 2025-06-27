@@ -27,7 +27,7 @@ from cosmos_rl.utils.pynccl import (
 
 
 class TestPolicyToRollout(unittest.TestCase):
-    def test_policy_to_rollout_wieght_sync():
+    def test_policy_to_rollout_wieght_sync(self):
         """Test NCCL communication between multiple ranks using torchrun."""
         cur_dir = os.path.dirname(os.path.abspath(__file__))
 
