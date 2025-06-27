@@ -33,7 +33,7 @@ jobs:
         run: |
           set -ex
 
-          container_id=$(docker run -d --rm
+          container_id=$(docker run -d --rm \
             --gpus all \
             --shm-size=24G \
             -v ${{ github.workspace }}/tests:/workspace/cosmos-rl/tests:ro \
