@@ -38,7 +38,8 @@ def setup_nccl_comm(rank, world_size, nccl_uid):
 
 
 class TestNCCLBidirectionalSendRecv(unittest.TestCase):
-    def run_bidirectional_sender(self, rank, world_size, nccl_uid, dtypes):
+    @staticmethod
+    def run_bidirectional_sender(rank, world_size, nccl_uid, dtypes):
         """Run sender part of bidirectional NCCL send/recv test."""
         comm_idx = setup_nccl_comm(rank, world_size, nccl_uid)
 
@@ -95,7 +96,8 @@ class TestNCCLBidirectionalSendRecv(unittest.TestCase):
 
 
 class TestNCCLBroadcast(unittest.TestCase):
-    def run_broadcast(self, rank, world_size, nccl_uid, dtypes):
+    @staticmethod
+    def run_broadcast(rank, world_size, nccl_uid, dtypes):
         """Run broadcast test for different data types."""
         comm_idx = setup_nccl_comm(rank, world_size, nccl_uid)
 
@@ -155,7 +157,8 @@ class TestNCCLBroadcast(unittest.TestCase):
 
 
 class TestNCCLAllreduce(unittest.TestCase):
-    def run_allreduce(self, rank, world_size, nccl_uid, dtypes):
+    @staticmethod
+    def run_allreduce(rank, world_size, nccl_uid, dtypes):
         """Run allreduce test for different data types."""
         comm_idx = setup_nccl_comm(rank, world_size, nccl_uid)
 
