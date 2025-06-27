@@ -26,5 +26,4 @@ cloudpickle
 click
 rich
 pyyaml
-pytest
 blobfile
