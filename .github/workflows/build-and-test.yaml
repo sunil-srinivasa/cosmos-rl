@@ -42,7 +42,7 @@ jobs:
             ${{ steps.vars.outputs.image_tag }} /bin/bash)
 
           echo "container_id=${container_id}" >> $GITHUB_OUTPUT
-          DOCKER_RUN="timeout 10m docker run ${container_id}"
+          DOCKER_RUN="timeout 10m docker exec ${container_id}"
 
           # run tests
           ${DOCKER_RUN} python tests/test_cache.py
