@@ -54,9 +54,11 @@
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Multi-node example</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#manual-deployment">Manual deployment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#dgxc-lepton-job-example">DGXC-Lepton job example</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#slurm-job-example">Slurm job example</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="dgxc_lepton.html">DGXC-Lepton Job</a></li>
+<li class="toctree-l1"><a class="reference internal" href="slurm.html">Slurm Job</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Elastic &amp; Fault Tolerance</span></p>
 <ul>
@@ -155,6 +157,25 @@
 </div>
 <p>Total <cite>8*4 + 4*2 = 40</cite> GPUs are used. (5 <cite>8xH100</cite> nodes will be allocated for this job)</p>
 <p>For more details about DGXC-Lepton, please refer to <a class="reference internal" href="dgxc_lepton.html"><span class="doc">DGXC-Lepton Job</span></a></p>
+</section>
+<section id="slurm-job-example">
+<h2>Slurm job example<a class="headerlink" href="#slurm-job-example" title="Link to this heading"></a></h2>
+<p>Cosmos slurm Job takes care of the number of GPU required by each policy and rollout replica. It will calculate and allocate the number of total nodes necessary to launch the job, then allocate and launch the job on the slurm cluster.</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">python</span> <span class="n">tools</span><span class="o">/</span><span class="n">slurm</span><span class="o">/</span><span class="n">dispatch_job</span><span class="o">.</span><span class="n">py</span> \
+<span class="go">        --ngpu-per-node 8 \</span>
+<span class="go">        --n-policy-replicas 8 \</span>
+<span class="go">        --n-rollout-replicas 4  \</span>
+<span class="go">        --config-path configs/qwen2-5/qwen2-5-32b-p-fsdp2-tp4-r-tp4-pp1-grpo-gsm8k.toml \</span>
+<span class="go">        --repo-root-path ${YOUR_COSMOS_REPO_PATH} \</span>
+<span class="go">        --output-root-path ${YOUR_COSMOS_LOG_OUTPUT_PATH} \</span>
+<span class="go">        --cosmos-container ${YOUR_COSMOS_SQSQ_PATH} \</span>
+<span class="go">        --slurm-partition ${YOUR_SLURM_PARTITION} \</span>
+<span class="go">        --slurm-account ${YOUR_SLURM_ACCOUNT} \</span>
+<span class="go">        tools/dataset/gsm8k_grpo.py</span>
+</pre></div>
+</div>
+<p>Total <cite>8*8 + 4*4 = 64</cite> GPUs are used. (8 <cite>8xH100</cite> nodes will be allocated for this job)</p>
+<p>For more details about Slurm job submission, please refer to <a class="reference internal" href="slurm.html"><span class="doc">Slurm Job</span></a></p>
 </section>
 </section>
 
