@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Single node example &mdash; cosmos-rl 0.1 documentation</title>
+  <title>Configuration &mdash; cosmos-rl 0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
@@ -19,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Configuration" href="configuration.html" />
-    <link rel="prev" title="Installation" href="installation.html" /> 
+    <link rel="next" title="Dataset &amp; Process" href="dataflow.html" />
+    <link rel="prev" title="Single node example" href="single_node_example.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -45,8 +45,8 @@
               <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Single node example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="single_node_example.html">Single node example</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataflow.html">Dataset &amp; Process</a></li>
 <li class="toctree-l1"><a class="reference internal" href="customization.html">Customized dataset/reward/packer</a></li>
 </ul>
@@ -86,9 +86,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Single node example</li>
+      <li class="breadcrumb-item active">Configuration</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/quickstart/single_node_example.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/quickstart/configuration.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -96,45 +96,16 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="single-node-example">
-<h1>Single node example<a class="headerlink" href="#single-node-example" title="Link to this heading"></a></h1>
-<p>This example demonstrates how to run <cite>Qwen3-8B</cite> on a single node with 8 GPUs.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span> \
-<span class="go">    --config configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml \</span>
-<span class="go">    --policy 1 \</span>
-<span class="go">    --rollout 2</span>
-</pre></div>
-</div>
-<p>Explanation of the command:</p>
-<ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--config</span></code>: the path to the training config file.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--policy</span></code>: the number of policy replicas.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--rollout</span></code>: the number of rollout replicas.</p></li>
-</ul>
-<p>As the toml file name suggests, this example uses <a class="reference external" href="https://huggingface.co/Qwen/Qwen3-8B">Qwen3-8B</a> model with:</p>
-<ul class="simple">
-<li><p>4-way tensor parallelism for policy model</p></li>
-<li><p>2-way tensor parallelism for rollout model</p></li>
-</ul>
-<p>and total 8 GPUs are used since 1 policy and 2 rollout replicas are specified.</p>
-<p>If everything goes well, you should see the training process like this:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="o">[</span>rank0<span class="o">]</span>:<span class="o">[</span>cosmos<span class="o">]</span><span class="w"> </span><span class="m">2025</span>-06-09<span class="w"> </span><span class="m">22</span>:14:29,220<span class="w"> </span>-<span class="w"> </span>cosmos<span class="w"> </span>-<span class="w"> </span>INFO<span class="w"> </span>-<span class="w"> </span>Step:<span class="w"> </span><span class="m">1</span>/4670,<span class="w"> </span>Loss:<span class="w"> </span><span class="m">0</span>.00000
-<span class="o">[</span>rank1<span class="o">]</span>:<span class="o">[</span>cosmos<span class="o">]</span><span class="w"> </span><span class="m">2025</span>-06-09<span class="w"> </span><span class="m">22</span>:14:29,219<span class="w"> </span>-<span class="w"> </span>cosmos<span class="w"> </span>-<span class="w"> </span>INFO<span class="w"> </span>-<span class="w"> </span>Step:<span class="w"> </span><span class="m">1</span>/4670,<span class="w"> </span>Loss:<span class="w"> </span><span class="m">0</span>.00000
-...
-</pre></div>
-</div>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>You may encounter loss values of 0.0 because the GRPO advantage is zero. Since it is a toy math example, it is expected.</p>
-</div>
+  <section id="configuration">
+<h1>Configuration<a class="headerlink" href="#configuration" title="Link to this heading"></a></h1>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="configuration.html" class="btn btn-neutral float-right" title="Configuration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="single_node_example.html" class="btn btn-neutral float-left" title="Single node example" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="dataflow.html" class="btn btn-neutral float-right" title="Dataset &amp; Process" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
