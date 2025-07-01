@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Customized dataset/reward/packer &mdash; cosmos-rl 0.1 documentation</title>
+  <title>Customization &mdash; cosmos-rl 0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
@@ -48,13 +48,14 @@
 <li class="toctree-l1"><a class="reference internal" href="single_node_example.html">Single node example</a></li>
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataflow.html">Dataset &amp; Process</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Customized dataset/reward/packer</a><ul>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Customization</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#customized-dataset">Customized dataset</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#how-to-tell-the-launcher-to-use-your-customized-dataset">How to tell the launcher to use your customized dataset?</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#customized-reward">Customized reward</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#customized-data-packer">Customized Data Packer</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#customized-model">Customized Model</a></li>
 </ul>
 </li>
 </ul>
@@ -94,7 +95,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Customized dataset/reward/packer</li>
+      <li class="breadcrumb-item active">Customization</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/quickstart/customization.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -104,8 +105,8 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="customized-dataset-reward-packer">
-<h1>Customized dataset/reward/packer<a class="headerlink" href="#customized-dataset-reward-packer" title="Link to this heading"></a></h1>
+  <section id="customization">
+<h1>Customization<a class="headerlink" href="#customization" title="Link to this heading"></a></h1>
 <section id="customized-dataset">
 <h2>Customized dataset<a class="headerlink" href="#customized-dataset" title="Link to this heading"></a></h2>
 <p>A <cite>torch.utils.data.Dataset</cite> object with <cite>query_reference_answer</cite> method is all you need:</p>
@@ -130,7 +131,6 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dataset</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dataset</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.run_web_panel</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span> <span class="k">as</span> <span class="n">launch_dispatcher</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.policy.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.algo.reward</span><span class="w"> </span><span class="kn">import</span> <span class="n">direct_math_reward_fn</span><span class="p">,</span> <span class="n">overlong_reward_fn</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span>
@@ -195,43 +195,42 @@
 </div>
 <section id="how-to-tell-the-launcher-to-use-your-customized-dataset">
 <h3>How to tell the launcher to use your customized dataset?<a class="headerlink" href="#how-to-tell-the-launcher-to-use-your-customized-dataset" title="Link to this heading"></a></h3>
-<p>Since we have already defined our customized dataset in previous step, we need to override the controller launcher to pass the custom dataset.</p>
-<p>Save this file to <cite>./custom_controller_entry.py</cite></p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dataset</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dataset</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.run_web_panel</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span> <span class="k">as</span> <span class="n">launch_dispatcher</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.policy.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.algo.reward</span><span class="w"> </span><span class="kn">import</span> <span class="n">direct_math_reward_fn</span><span class="p">,</span> <span class="n">overlong_reward_fn</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConcatDataset</span>
+<p>Since we have already defined our customized dataset in previous step, we need to override the launcher entry point to pass the custom dataset.</p>
+<p>Save this file to <cite>./custom_entry.py</cite></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span>   <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dataset</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dataset</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.launcher.worker_entry</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span> <span class="k">as</span> <span class="n">launch_worker</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.policy.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.algo.reward</span><span class="w"> </span><span class="kn">import</span> <span class="n">direct_math_reward_fn</span><span class="p">,</span> <span class="n">overlong_reward_fn</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span>
+   <span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConcatDataset</span>
 
-<span class="k">class</span><span class="w"> </span><span class="nc">MathDapoDataset</span><span class="p">(</span><span class="n">Dataset</span><span class="p">):</span>
-    <span class="o">...</span>
+   <span class="k">class</span><span class="w"> </span><span class="nc">MathDapoDataset</span><span class="p">(</span><span class="n">Dataset</span><span class="p">):</span>
+       <span class="o">...</span>
 
-<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">launch_dispatcher</span><span class="p">(</span>
-        <span class="n">dataset</span><span class="o">=</span><span class="n">MathDapoDataset</span><span class="p">(),</span>
-    <span class="p">)</span>
+   <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+       <span class="c1"># `dataset` argument can be:</span>
+       <span class="c1">#   - a dataset instance</span>
+       <span class="c1">#   - a factory function that returns a dataset instance</span>
+       <span class="c1">#</span>
+       <span class="c1"># It is best practice to pass the dataset as a factory function</span>
+       <span class="c1"># so that the dataset can be loaded on demand. (Not all workers need it)</span>
+       <span class="k">def</span><span class="w"> </span><span class="nf">get_dataset_factory</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dataset</span><span class="p">:</span>
+           <span class="k">return</span> <span class="n">MathDapoDataset</span><span class="p">()</span>
+
+       <span class="n">launch_worker</span><span class="p">(</span>
+           <span class="n">dataset</span><span class="o">=</span><span class="n">get_dataset_factory</span><span class="p">,</span>
+       <span class="p">)</span>
+
+
+<span class="n">Append</span> <span class="n">your</span> <span class="n">customized</span> <span class="n">launcher</span> <span class="n">entry</span> <span class="n">point</span> <span class="n">to</span> <span class="err">`</span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span><span class="err">`</span> <span class="n">command</span><span class="p">:</span>
 </pre></div>
 </div>
-<ol class="arabic simple">
-<li><p>Either add <cite>launcher</cite> argument to <cite>cosmos-rl</cite> command if one-click launch is used:</p></li>
-</ol>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span> \
-<span class="go">    --config configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml \</span>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span> <span class="o">--</span><span class="n">config</span> <span class="n">configs</span><span class="o">/</span><span class="n">qwen3</span><span class="o">/</span><span class="n">qwen3</span><span class="o">-</span><span class="mi">8</span><span class="n">b</span><span class="o">-</span><span class="n">p</span><span class="o">-</span><span class="n">tp4</span><span class="o">-</span><span class="n">r</span><span class="o">-</span><span class="n">tp2</span><span class="o">-</span><span class="n">pp1</span><span class="o">-</span><span class="n">grpo</span><span class="o">.</span><span class="n">toml</span> \
 <span class="go">    --policy 1 \</span>
 <span class="go">    --rollout 2 \</span>
-<span class="go">    custom_controller_entry.py</span>
-</pre></div>
-</div>
-<ol class="arabic simple" start="2">
-<li><p>Or add <cite>launcher</cite> argument to <cite>launch_controller.sh</cite> if manual launch is used:</p></li>
-</ol>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="o">./</span><span class="n">tools</span><span class="o">/</span><span class="n">launch_controller</span><span class="o">.</span><span class="n">sh</span> \
-<span class="go">    --port 8000 \</span>
-<span class="go">    --config configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml \</span>
-<span class="go">    custom_controller_entry.py</span>
+<span class="go">    custom_entry.py</span>
 </pre></div>
 </div>
 <p>Check <a class="reference external" href="#">./tools/dataset/</a> for more pre-defined customized datasets.</p>
@@ -249,8 +248,10 @@
     <span class="k">return</span> <span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()</span>
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">launch_dispatcher</span><span class="p">(</span>
+    <span class="n">launch_worker</span><span class="p">(</span>
+        <span class="c1">#...</span>
         <span class="n">reward_fns</span><span class="o">=</span><span class="p">[</span><span class="n">custom_reward_fn</span><span class="p">],</span>
+        <span class="c1">#...</span>
     <span class="p">)</span>
 </pre></div>
 </div>
@@ -267,7 +268,7 @@
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">torch.utils.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dataset</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">datasets</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_dataset</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.run_web_panel</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span> <span class="k">as</span> <span class="n">launch_dispatcher</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.launcher.worker_entry</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span> <span class="k">as</span> <span class="n">launch_worker</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.policy.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">Config</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.algo.reward</span><span class="w"> </span><span class="kn">import</span> <span class="n">gsm8k_reward_fn</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">AutoTokenizer</span>
@@ -393,10 +394,54 @@
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">underlying_data_packer</span><span class="o">.</span><span class="n">policy_collate_fn</span><span class="p">(</span><span class="n">processed_samples</span><span class="p">,</span> <span class="n">computed_max_len</span><span class="p">)</span>
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">launch_dispatcher</span><span class="p">(</span>
-        <span class="n">dataset</span><span class="o">=</span><span class="n">GSM8kDataset</span><span class="p">(),</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_dataset_factory</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Config</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dataset</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">GSM8kDataset</span><span class="p">()</span>
+
+    <span class="n">launch_worker</span><span class="p">(</span>
+        <span class="c1">#...</span>
+        <span class="n">dataset</span><span class="o">=</span><span class="n">get_dataset_factory</span><span class="p">,</span>
         <span class="n">data_packer</span><span class="o">=</span><span class="n">DemoDataPacker</span><span class="p">(),</span>
+        <span class="c1">#...</span>
     <span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="customized-model">
+<h2>Customized Model<a class="headerlink" href="#customized-model" title="Link to this heading"></a></h2>
+<p>To customize the model, one needs to implement:</p>
+<ul class="simple">
+<li><p>A new model class that inherits from <cite>cosmos_rl.policy.model.base.BaseModel</cite></p></li>
+<li><p>A <cite>WeightMapper</cite> class that inherits from <cite>cosmos_rl.policy.model.base.WeightMapper</cite></p></li>
+<li><p>A <cite>DataPacker</cite> class that inherits from <cite>cosmos_rl.dispatcher.data.packer.DataPacker</cite></p></li>
+</ul>
+<p>Let’s take <cite>deepseek_v3</cite> as an example.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.launcher.worker_entry</span><span class="w"> </span><span class="kn">import</span> <span class="n">main</span> <span class="k">as</span> <span class="n">launch_worker</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">deepseek_v3</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeepseekV3MoEModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">deepseek_v3.weight_mapper</span><span class="w"> </span><span class="kn">import</span> <span class="n">DeepseekV3MoEWeightMapper</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.dispatcher.data.packer.decoder_only_llm_data_packer</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">DecoderOnlyLLMDataPacker</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">cosmos_rl.policy.model.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelRegistry</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="c1"># Register the model into the registry</span>
+    <span class="n">ModelRegistry</span><span class="o">.</span><span class="n">register_model</span><span class="p">(</span>
+        <span class="c1"># Model class to register</span>
+        <span class="n">DeepseekV3MoEModel</span><span class="p">,</span>
+        <span class="c1"># Data packer for this model</span>
+        <span class="n">DecoderOnlyLLMDataPacker</span><span class="p">,</span>
+        <span class="c1"># Weight mapper for this model</span>
+        <span class="n">DeepseekV3MoEWeightMapper</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">launch_worker</span><span class="p">()</span>
+</pre></div>
+</div>
+<p>First import the model class, weight mapper class, and data packer class from the external source code.</p>
+<p>Then register the model into the registry via <cite>ModelRegistry.register_model</cite>.</p>
+<p>User can launch a external model job with:</p>
+<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span> <span class="o">--</span><span class="n">config</span> <span class="o">./</span><span class="n">configs</span><span class="o">/</span><span class="n">deepseek</span><span class="o">-</span><span class="n">v3</span><span class="o">/</span><span class="n">moonlight</span><span class="o">-</span><span class="n">moe</span><span class="o">-</span><span class="mi">13</span><span class="n">b</span><span class="o">-</span><span class="n">tp4</span><span class="o">-</span><span class="n">sft</span><span class="o">.</span><span class="n">toml</span>
+<span class="go">    ./tools/model/moonlight_launcher.py</span>
 </pre></div>
 </div>
 </section>
