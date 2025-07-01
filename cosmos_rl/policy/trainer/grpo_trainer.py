@@ -264,6 +264,12 @@ class GRPOTrainer(Trainer):
 
     def handle_shutdown(self):
         if not hasattr(self, "_handle_shutdown_called"):
+            if hasattr(self, "upload_thread") and self.upload_thread is not None:
+                logger.info("[Policy] Waiting for upload thread to finish...")
+                self.upload_thread.join()
+                logger.info("[Policy] Upload thread finished.")
+                self.upload_thread = None
+
             self._handle_shutdown_called = True
 
             self.shutdown_signal.set()
@@ -282,12 +288,6 @@ class GRPOTrainer(Trainer):
 
             # Manually unregister from controller
             self.unregister_from_controller()
-
-            if hasattr(self, "upload_thread") and self.upload_thread is not None:
-                logger.info("[Policy] Waiting for upload thread to finish...")
-                self.upload_thread.join()
-                logger.info("[Policy] Upload thread finished.")
-                self.upload_thread = None
 
             # TODO(jiaxin)
             # The background threads are daemon threads, so that they will exit when the main thread exits
