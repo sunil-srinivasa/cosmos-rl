@@ -191,6 +191,19 @@ def main():
         min_n_gpus_policy = (
             min_n_gpus_policy * config["policy"]["parallelism"]["dp_shard_size"]
         )
+    # Update the n_init_replicas in the config
+    if "policy" in config and "parallelism" in config["policy"]:
+        config["policy"]["parallelism"]["n_init_replicas"] = args.n_policy_replicas
+    if "rollout" in config and "parallelism" in config["rollout"]:
+        # Only available for RL.
+        config["rollout"]["parallelism"]["n_init_replicas"] = args.n_rollout_replicas
+    # Create a temporary file and write to it
+    with tempfile.NamedTemporaryFile(
+        mode="w+", suffix=".toml", delete=False
+    ) as tmpfile:
+        toml.dump(config, tmpfile)
+        config_tmpfile = tmpfile.name
+
 
     policy_node_launch_metadata: List[NodeLaunchMetadata] = compute_nodes(
         args.ngpu_per_node, min_n_gpus_policy, args.n_policy_replicas, "policy"
@@ -211,7 +224,7 @@ def main():
         "SLURM_PARTITION": args.slurm_partition,
         "SLURM_ACCOUNT": args.slurm_account,
         "SLURM_JOB_NAME": args.job_name,
-        "CONFIG_PATH": args.config_path,
+        "CONFIG_PATH": config_tmpfile,
         "LAUNCHER": args.launcher,
         "EXTRA_SBATCH_ARGS": "\n".join(
             f"#SBATCH {arg}" for arg in args.extra_sbatch_args
@@ -258,6 +271,13 @@ def main():
         logging.error(f"Failed to submit job: {proc.returncode}")
         sys.exit(1)
 
+    if config_tmpfile is not None and os.path.exists(config_tmpfile):
+        # Clean up the temporary file
+        try:
+            os.unlink(config_tmpfile)
+            config_tmpfile = None
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     main()

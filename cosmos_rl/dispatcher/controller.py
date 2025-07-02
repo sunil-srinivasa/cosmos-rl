@@ -54,6 +54,7 @@ from cosmos_rl.dispatcher.protocol import SetProfileRequest
 from transformers import AutoTokenizer
 from cosmos_rl.dispatcher.data.packer.base import DataPacker
 from cosmos_rl.utils.parallelism_map import ParallelizedShardMapper
+from cosmos_rl.dispatcher.command import PolicyToRolloutUnicastCommand
 
 
 class Controller:
@@ -247,6 +248,10 @@ class Controller:
         self.rollout_status_manager.setup(
             config, self.redis_controller, tokenizer=self.tokenizer
         )
+        if self.config.train.resume:
+            # If resuming, disable the weight sync check flag for rollout to compare the received weight with the reference weight.
+            PolicyToRolloutUnicastCommand._do_weight_sync_check_flag = False
+
 
         # Register the exit function to be called when the program exits
         def exit_server(redis_server_proc, redis_free_port):
