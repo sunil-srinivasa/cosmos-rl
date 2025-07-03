@@ -83,4 +83,8 @@ COPY tools /workspace/cosmos_rl/tools
 COPY configs /workspace/cosmos_rl/configs
 COPY cosmos_rl /workspace/cosmos_rl/cosmos_rl
 
+# Apply patch to vllm-0.9.1 where qwen-vl-utils get error during init
+COPY patch/vllm_0_9_1.patch /workspace/cosmos_rl/vllm_0_9_1.patch
+
+RUN cd $(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])") && patch -p1 < /workspace/cosmos_rl/vllm_0_9_1.patch && cd -
 RUN cd /workspace/cosmos_rl && pip install -e . && cd -
