@@ -1759,7 +1759,7 @@
 <tr class="row-even"><td><p>default</p></td>
 <td colspan="3"><p>False</p></td>
 </tr>
-<tr class="row-odd"><td rowspan="108"><ul class="simple">
+<tr class="row-odd"><td rowspan="138"><ul class="simple">
 <li><p>TrainingConfig</p></li>
 </ul>
 </td>
@@ -1770,11 +1770,104 @@
 </tr>
 <tr class="row-odd"><td colspan="5"><p>properties</p></td>
 </tr>
-<tr class="row-even"><td rowspan="3"><ul class="simple">
-<li><p><strong>train_policy</strong></p></li>
+<tr class="row-even"><td rowspan="33"><ul class="simple">
+<li><p>train_policy</p></li>
 </ul>
 </td>
 <td colspan="4"><p><em>Train Policy</em></p></td>
+</tr>
+<tr class="row-odd"><td rowspan="30"><p>default</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p>grpo</p></td>
+</tr>
+<tr class="row-even"><td><p>variant</p></td>
+<td colspan="2"><p>grpo</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="5"><p>dataset</p></td>
+<td><p>name</p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>revision</p></td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><p>split</p></td>
+<td></td>
+</tr>
+<tr class="row-even"><td><p>subset</p></td>
+<td></td>
+</tr>
+<tr class="row-odd"><td><p>test_size</p></td>
+<td><p>None</p></td>
+</tr>
+<tr class="row-even"><td><p>dataloader_shuffle</p></td>
+<td colspan="2"><p>True</p></td>
+</tr>
+<tr class="row-odd"><td><p>enable_dataset_cache</p></td>
+<td colspan="2"><p>False</p></td>
+</tr>
+<tr class="row-even"><td><p>dataloader_num_workers</p></td>
+<td colspan="2"><p>0</p></td>
+</tr>
+<tr class="row-odd"><td><p>dataloader_prefetch_factor</p></td>
+<td colspan="2"><p>None</p></td>
+</tr>
+<tr class="row-even"><td><p>prompt_column_name</p></td>
+<td colspan="2"></td>
+</tr>
+<tr class="row-odd"><td><p>response_column_name</p></td>
+<td colspan="2"></td>
+</tr>
+<tr class="row-even"><td><p>reward_function</p></td>
+<td colspan="2"><p>single_choice</p></td>
+</tr>
+<tr class="row-odd"><td><p>temperature</p></td>
+<td colspan="2"><p>1.0</p></td>
+</tr>
+<tr class="row-even"><td><p>epsilon_low</p></td>
+<td colspan="2"><p>0.2</p></td>
+</tr>
+<tr class="row-odd"><td><p>epsilon_high</p></td>
+<td colspan="2"><p>0.2</p></td>
+</tr>
+<tr class="row-even"><td><p>lower_bound_ratio</p></td>
+<td colspan="2"><p>3.0</p></td>
+</tr>
+<tr class="row-odd"><td><p>loss_type</p></td>
+<td colspan="2"><p>token-mean</p></td>
+</tr>
+<tr class="row-even"><td><p>unbiased_loss_max_tokens</p></td>
+<td colspan="2"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td><p>unbiased_advantage</p></td>
+<td colspan="2"><p>False</p></td>
+</tr>
+<tr class="row-even"><td rowspan="3"><p>overlong_reward</p></td>
+<td><p>buffer_length</p></td>
+<td><p>4096</p></td>
+</tr>
+<tr class="row-odd"><td><p>enable_overlong_penalty</p></td>
+<td><p>False</p></td>
+</tr>
+<tr class="row-even"><td><p>penalty_factor</p></td>
+<td><p>1.0</p></td>
+</tr>
+<tr class="row-odd"><td><p>kl_beta</p></td>
+<td colspan="2"><p>0.0</p></td>
+</tr>
+<tr class="row-even"><td><p>aipo_rho</p></td>
+<td colspan="2"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td><p>mu_iterations</p></td>
+<td colspan="2"><p>1</p></td>
+</tr>
+<tr class="row-even"><td><p>mini_batch</p></td>
+<td colspan="2"><p>2</p></td>
+</tr>
+<tr class="row-odd"><td><p>allowed_outdated_steps</p></td>
+<td colspan="2"><p>4</p></td>
+</tr>
+<tr class="row-even"><td><p>min_filter_prefix_tokens</p></td>
+<td colspan="2"><p>None</p></td>
 </tr>
 <tr class="row-odd"><td rowspan="2"><p>oneOf</p></td>
 <td colspan="3"><p><span class="xref std std-ref">#/$defs/SFTDataConfig</span></p></td>
