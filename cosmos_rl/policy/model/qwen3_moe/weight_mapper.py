@@ -79,7 +79,6 @@ class Qwen3MoeWeightMapper(WeightMapper):
         for param_name, param in vllm_model.named_parameters():
             group_keys = []
             param_name_hf = self._rollout_vllm_name_to_hf(param_name)
-            # logger.info(f"[Rollout] param_name_hf: {param_name_hf}")
             if "qkv_proj" in param_name_hf:
                 # must be inplace slicing.
                 # split qkv weight

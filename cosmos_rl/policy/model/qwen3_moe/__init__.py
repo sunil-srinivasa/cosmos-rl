@@ -376,7 +376,7 @@ class FeedForward(nn.Module):
         # An implication is that tokens to the same "expert group" (i.e., device) are also consecutive.
         # Since this is an "aritificial" index creation (final outcome being
         # `idxs`), we don't need gradients here.
-
+        # topk_ids: [seqlen, topk]
         with torch.no_grad():
             # [seq_len, n_routed_experts]
             expert_counts = topk_ids.new_zeros((topk_ids.shape[0], self.total_experts))
@@ -560,6 +560,7 @@ class Qwen3MoEBlock(nn.Module):
         self.n_heads = model_args.n_heads
         self.dim = model_args.dim
         self.self_attn = Attention(model_args)
+        # MoE layer.
         self.mlp = FeedForward(
             dim=model_args.dim,
             intermediate_dim=model_args.ffn_dim,
