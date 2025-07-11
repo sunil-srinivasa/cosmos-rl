@@ -366,9 +366,21 @@ Note: It is allowed to use CPU resource shapes within a GPU node group.</p>
 </tr>
 <tr class="row-even"><td><p><cite>–lepton-queue-priority</cite></p></td>
 <td><p><cite>-qp</cite></p></td>
-<td><p><cite>str</cite></p></td>
+<td><p><cite>int</cite></p></td>
 <td><p><cite>None</cite></p></td>
-<td><p>Queue priority.</p></td>
+<td><p>Queue priority for dedicated node groups (1-9, mapped to low-1000…high-9000).</p></td>
+</tr>
+<tr class="row-odd"><td><p><cite>–lepton-can-be-preempted</cite></p></td>
+<td><p><cite>-cbp</cite></p></td>
+<td><p><cite>store_true</cite></p></td>
+<td><p><cite>False</cite></p></td>
+<td><p>Allow this job to be preempted by higher priority jobs (dedicated node groups only).</p></td>
+</tr>
+<tr class="row-even"><td><p><cite>–lepton-can-preempt</cite></p></td>
+<td><p><cite>-cp</cite></p></td>
+<td><p><cite>store_true</cite></p></td>
+<td><p><cite>False</cite></p></td>
+<td><p>Allow this job to preempt lower priority jobs (dedicated node groups only).</p></td>
 </tr>
 <tr class="row-odd"><td><p><cite>–lepton-visibility</cite></p></td>
 <td><p>—</p></td>
