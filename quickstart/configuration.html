@@ -461,7 +461,7 @@
 <tr class="row-odd"><td><p>default</p></td>
 <td colspan="3"><p>rowwise</p></td>
 </tr>
-<tr class="row-even"><td rowspan="99"><ul class="simple">
+<tr class="row-even"><td rowspan="101"><ul class="simple">
 <li><p>GrpoConfig</p></li>
 </ul>
 </td>
@@ -594,15 +594,15 @@
 <tr class="row-even"><td><p>default</p></td>
 <td colspan="3"></td>
 </tr>
-<tr class="row-odd"><td rowspan="5"><ul class="simple">
+<tr class="row-odd"><td rowspan="7"><ul class="simple">
 <li><p>reward_function</p></li>
 </ul>
 </td>
 <td colspan="4"><p><em>Reward Function</em></p></td>
 </tr>
-<tr class="row-even"><td colspan="4"><p>A List of reward functions for the model. Currently support <cite>single_choice</cite>, <cite>boxed_math</cite>, and <cite>format</cite>.</p></td>
+<tr class="row-even"><td colspan="4"><p>Reward functions for the model. Currently support <cite>single_choice</cite>, <cite>boxed_math</cite>, and <cite>format</cite>. You can add weight to each reward function by passing a dict, e.g., {‘single_choice’: 0.9, ‘format’: 0.1}</p></td>
 </tr>
-<tr class="row-odd"><td rowspan="3"><p>anyOf</p></td>
+<tr class="row-odd"><td rowspan="5"><p>anyOf</p></td>
 <td><p>type</p></td>
 <td colspan="2"><p><em>string</em></p></td>
 </tr>
@@ -612,6 +612,13 @@
 <tr class="row-odd"><td><p>items</p></td>
 <td><p>type</p></td>
 <td><p><em>string</em></p></td>
+</tr>
+<tr class="row-even"><td><p>type</p></td>
+<td colspan="2"><p><em>object</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>additionalProperties</p></td>
+<td><p>type</p></td>
+<td><p><em>number</em></p></td>
 </tr>
 <tr class="row-even"><td rowspan="4"><ul class="simple">
 <li><p>temperature</p></li>
@@ -1818,7 +1825,8 @@
 <td colspan="2"></td>
 </tr>
 <tr class="row-even"><td><p>reward_function</p></td>
-<td colspan="2"><p>single_choice</p></td>
+<td><p>single_choice</p></td>
+<td><p>1.0</p></td>
 </tr>
 <tr class="row-odd"><td><p>temperature</p></td>
 <td colspan="2"><p>1.0</p></td>
@@ -2345,24 +2353,25 @@
 </td>
 <td colspan="4"><p><em>Reward Function</em></p></td>
 </tr>
-<tr class="row-odd"><td colspan="4"><p>Reward function for validation.</p></td>
+<tr class="row-odd"><td colspan="4"><p>Reward functions for the model. Currently support <cite>single_choice</cite>, <cite>boxed_math</cite>, and <cite>format</cite>. You can add weight to each reward function by passing a dict, e.g., {‘single_choice’: 0.9, ‘format’: 0.1}</p></td>
 </tr>
-<tr class="row-even"><td><p>default</p></td>
-<td colspan="3"><p>None</p></td>
-</tr>
-<tr class="row-odd"><td rowspan="4"><p>anyOf</p></td>
+<tr class="row-even"><td rowspan="5"><p>anyOf</p></td>
 <td><p>type</p></td>
 <td colspan="2"><p><em>string</em></p></td>
 </tr>
-<tr class="row-even"><td><p>type</p></td>
+<tr class="row-odd"><td><p>type</p></td>
 <td colspan="2"><p><em>array</em></p></td>
 </tr>
-<tr class="row-odd"><td><p>items</p></td>
+<tr class="row-even"><td><p>items</p></td>
 <td><p>type</p></td>
 <td><p><em>string</em></p></td>
 </tr>
-<tr class="row-even"><td><p>type</p></td>
-<td colspan="2"><p><em>null</em></p></td>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="2"><p><em>object</em></p></td>
+</tr>
+<tr class="row-even"><td><p>additionalProperties</p></td>
+<td><p>type</p></td>
+<td><p><em>number</em></p></td>
 </tr>
 </tbody>
 </table>
