@@ -1195,6 +1195,7 @@ class ParallelizedShardMapper:
             self.rollout_raw_info_bytes = rollout_raw_info_bytes
             util.create_async_task(self.post_set_shard_infos())
 
+
     def generate_parallelized_shard_send_insts_for_policy(
         self, p_rank: int
     ) -> List[WeightSyncInstructionsGroup]:

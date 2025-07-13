@@ -13,7 +13,7 @@ optm_betas = [0.9, 0.999]
 optm_warmup_steps = 20
 optm_grad_norm_clip = 1.0
 async_tp_enabled = false
-compile = false
+compile = false # FIXME: (lms/jiaxin) policy moe in compile mode will cause error
 param_dtype = "bfloat16"
 fsdp_reduce_dtype = "float32"
 fsdp_offload = false
@@ -40,7 +40,7 @@ seed = 42
 [policy]
 model_name_or_path = "Qwen/Qwen3-30B-A3B"
 model_max_length = 512 
-model_gradient_checkpointing = true
+model_gradient_checkpointing = false
 
 [logging]
 logger = ['console', 'wandb']
@@ -69,7 +69,7 @@ save_mode = "async"
 
 [rollout.parallelism]
 n_init_replicas = 1
-tp_size = 2
+tp_size = 4
 pp_size = 1
 
 [rollout.sampling_config]

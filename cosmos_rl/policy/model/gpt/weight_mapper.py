@@ -102,7 +102,6 @@ class GPTWeightMapper(WeightMapper):
                 group_keys.append((compatible_key, param.ndim))
 
             recv_key_n_shape_list.append(group_keys)
-
         return vllm_weight_inplace_view_map, recv_key_n_shape_list
 
     def policy_map_local_key_to_hf_key(self, name: str) -> str:

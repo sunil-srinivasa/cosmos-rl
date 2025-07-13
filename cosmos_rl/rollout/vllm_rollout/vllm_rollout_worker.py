@@ -71,7 +71,6 @@ from cosmos_rl.utils.fp8.fp8_util import (
 from cosmos_rl.rollout.vllm_rollout.monkey_patch_for_fp8 import (
     cache_weight_of_quantized_module,
     replace_weight_of_quantized_module,
-    post_process_view_map_for_fp8,
 )
 
 from vllm import SamplingParams
@@ -296,9 +295,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
         )
 
         if self.quantization_type == "fp8":
-            self.vllm_weight_inplace_view_map = post_process_view_map_for_fp8(
-                self.vllm_weight_inplace_view_map
-            )
             # Get vllm weight back into quantized.
             replace_weight_of_quantized_module(
                 self.get_underlying_model(),

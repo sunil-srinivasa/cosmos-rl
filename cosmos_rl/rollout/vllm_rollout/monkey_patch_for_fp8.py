@@ -7,12 +7,12 @@ from vllm.model_executor.layers.quantization.utils.w8a8_utils import Fp8LinearOp
 from vllm.model_executor.layers.quantization.fp8 import (
     Fp8LinearMethod,
     Fp8MoEMethod,
-    UnquantizedLinearMethod,
 )
 from vllm import _custom_ops as ops
 from vllm.model_executor.layers.quantization.utils import w8a8_utils
 
 from cosmos_rl.policy.model import WeightMapper
+from cosmos_rl.utils.logging import logger
 
 
 """
@@ -141,9 +141,37 @@ def replace_weight_of_quantized_module(
     for name, module in vllm_model.named_modules():
         # Here we use the compatible name as the key, aligned with what we do in
         # `cache_weight_of_quantized_module` and `rollout_prepare_recv`.
-        compatible_name = weight_mapper._rollout_vllm_name_to_hf(name + ".weight")
-        if compatible_name in cached_weight_map:
-            module.weight = cached_weight_map[compatible_name]
+        for weight_name, param in module.named_parameters(recurse=False):
+            if "weight_scale" in weight_name:
+                continue
+            full_weight_name = name + "." + weight_name
+            full_weight_scale_name = full_weight_name.replace("weight", "weight_scale")
+
+            compatible_weight_name = weight_mapper._rollout_vllm_name_to_hf(
+                full_weight_name
+            )
+            compatible_weight_scale_name = weight_mapper._rollout_vllm_name_to_hf(
+                full_weight_scale_name
+            )
+
+            if compatible_weight_name in cached_weight_map:
+                weight_attr_name = full_weight_name.split(".")[-1]
+                assert hasattr(
+                    module, weight_attr_name
+                ), f"Module {name} doesn't have weight attribute: {weight_attr_name}"
+                setattr(
+                    module, weight_attr_name, cached_weight_map[compatible_weight_name]
+                )
+            if compatible_weight_scale_name in cached_weight_map:
+                weight_scale_attr_name = full_weight_scale_name.split(".")[-1]
+                assert hasattr(
+                    module, weight_scale_attr_name
+                ), f"Module {name} doesn't have weight_scale attribute: {weight_scale_attr_name}"
+                setattr(
+                    module,
+                    weight_scale_attr_name,
+                    cached_weight_map[compatible_weight_scale_name],
+                )
 
 
 def cache_weight_of_quantized_module(
@@ -152,41 +180,59 @@ def cache_weight_of_quantized_module(
     weight_mapper: WeightMapper,
 ) -> Tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
     """Get the weight from the quantized module."""
+    logger.warning("""[Rollout] We will create a copy of quantized weight in high precision for weight sync and dynamic quantization. 
+                   This may cause CUDA OOM. You may increase the rollout parallelism to keep more memory for this caching.
+                   """)
     original_weight_map = {}
     hp_weight_map = {}
-    for name, module in vllm_model.named_modules():
+    for module_name, module in vllm_model.named_modules():
         quant_method = getattr(module, "quant_method", None)
         if quant_method is None:
             continue
-        elif isinstance(quant_method, Fp8LinearMethod):
-            weight_name = name + ".weight"
-            compatible_name = weight_mapper._rollout_vllm_name_to_hf(weight_name)
-            original_weight_map[compatible_name] = (
-                module.weight
-            )  # qweight has shape [in_dim, out_dim]
-            hp_weight = (
-                module.weight.t().to(promotion_dtype).contiguous()
-            )  # hp weight has shape [out_dim, in_dim]
-            hp_weight_map[compatible_name] = Parameter(hp_weight, requires_grad=False)
+        if isinstance(quant_method, Fp8LinearMethod):
+            for weight_name, param in module.named_parameters(recurse=False):
+                full_weight_name = module_name + "." + weight_name
+                compatible_name = weight_mapper._rollout_vllm_name_to_hf(
+                    full_weight_name
+                )
+                if weight_name.endswith("weight_scale"):
+                    original_weight_map[compatible_name] = getattr(module, weight_name)
+                    hp_weight_map[compatible_name] = None
+                elif weight_name.endswith("weight"):
+                    original_weight_map[compatible_name] = getattr(
+                        module, weight_name
+                    )  # qweight has shape [in_dim, out_dim]
+                    hp_weight = (
+                        module.weight.t().to(promotion_dtype).contiguous()
+                    )  # hp weight has shape [out_dim, in_dim]
+                    hp_weight_map[compatible_name] = Parameter(
+                        hp_weight, requires_grad=False
+                    )
+                else:
+                    # for other param like bias, we will not handle.
+                    pass
+        elif isinstance(quant_method, Fp8MoEMethod):
+            for weight_name, param in module.named_parameters(recurse=False):
+                # cache both weight and weight scale
+                full_weight_name = module_name + "." + weight_name
+                compatible_name = weight_mapper._rollout_vllm_name_to_hf(
+                    full_weight_name
+                )
+                if weight_name.endswith("weight_scale"):
+                    hp_weight_map[compatible_name] = None
+                    original_weight_map[compatible_name] = getattr(module, weight_name)
+                elif weight_name.endswith("weight"):
+                    hp_weight = param.to(
+                        promotion_dtype
+                    ).contiguous()  # qweight has shape [num_experts, out_dim, in_dim]
+                    hp_weight_map[compatible_name] = Parameter(
+                        hp_weight, requires_grad=False
+                    )
+                    original_weight_map[compatible_name] = getattr(module, weight_name)
+                else:
+                    # for other param like bias, we will not handle.
+                    pass
         else:
             # We will not handle other quant methods.
             pass
     return hp_weight_map, original_weight_map
-
-
-def post_process_view_map_for_fp8(
-    vllm_weight_inplace_view_map: Dict[str, torch.Tensor],
-) -> Dict[str, torch.Tensor]:
-    """Process the view map returned by `rollout_prepare_recv`.
-            - remove the weight_scale from the view map.
-    Args:
-        vllm_weight_inplace_view_map (Dict[str, torch.Tensor]): view map returned by `rollout_prepare_recv`
-    Returns:
-        Dict[str, torch.Tensor]: view map doesn't contain weight_scale.
-    """
-    processed_view_map = {}
-    for key, value in vllm_weight_inplace_view_map.items():
-        if "weight_scale" in key:
-            continue
-        processed_view_map[key] = value
-    return processed_view_map
