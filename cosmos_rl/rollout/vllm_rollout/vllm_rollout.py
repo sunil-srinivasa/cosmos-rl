@@ -20,6 +20,8 @@ from transformers import AutoTokenizer, AutoConfig
 from transformers import GenerationConfig
 from vllm.entrypoints.llm import LLM
 from vllm import SamplingParams
+from functools import partial
+import types
 from cosmos_rl.rollout.rollout_base import RolloutBase
 from cosmos_rl.policy.config import Config
 from cosmos_rl.utils.logging import logger
@@ -27,8 +29,13 @@ import cosmos_rl.utils.util as util
 from cosmos_rl.rollout.vllm_rollout.vllm_patch import (
     patch_vllm_model_to_reload_weight,
 )
+from cosmos_rl.utils.constant import (
+    COSMOS_ROLLOUT_STEP_INTERVAL,
+)
 from cosmos_rl.policy.config import RolloutConfig
 from cosmos_rl.dispatcher.data.packer import DataPacker
+
+from cosmos_rl.dispatcher.command import Command, RolloutToRolloutBroadcastCommand
 
 
 def vllm_version_check(rollout_config: RolloutConfig):
@@ -92,6 +99,27 @@ class vLLMRollout(RolloutBase):
         # disable VLLM_DISABLE_COMPILE_CACHE
         os.environ["VLLM_DISABLE_COMPILE_CACHE"] = "1"
 
+        # if flashinfer config is not enabled, avoid importing flashinfer
+        if self.config.rollout.vllm_use_flashinfer:
+            try:
+                import flashinfer  # noqa: F401
+            except ImportError:
+                logger.warning(
+                    "[Rollout] flashinfer is not installed, ignore rollout.vllm_use_flashinfer setting."
+                )
+            else:
+                os.environ["VLLM_ATTENTION_BACKEND"] = "FLASHINFER"
+
+        if self.config.rollout.sampling_config.use_flashinfer:
+            try:
+                import flashinfer  # noqa: F401
+            except ImportError:
+                logger.warning(
+                    "[Rollout] flashinfer is not installed, ignore rollout.sampling_config.use_flashinfer setting."
+                )
+            else:
+                os.environ["VLLM_USE_FLASHINFER_SAMPLER"] = "1"
+
         self.rollout_engine = LLM(
             model=model_path,
             enable_sleep_mode=False,  # enable sleep could corrupt the cuda allocator.
@@ -147,6 +175,33 @@ class vLLMRollout(RolloutBase):
 
         self.tokenizer = tokenizer
 
+        # sampling params
+        self.val_sampling_params = SamplingParams(
+            n=self.config.validation.n_generation,
+            logprobs=0,
+            top_p=self.config.validation.top_p,
+            top_k=self.config.validation.top_k,
+            temperature=self.config.validation.temperature,
+            repetition_penalty=self.config.validation.repetition_penalty,
+            max_tokens=self.config.validation.max_response_length,
+            stop_token_ids=self.eos_token_ids,
+            include_stop_str_in_output=self.config.rollout.include_stop_str_in_output,
+            detokenize=True,
+        )
+
+        self.sampling_params = SamplingParams(
+            n=self.config.rollout.n_generation,
+            logprobs=0,
+            top_p=self.config.rollout.sampling_config.top_p,
+            top_k=self.config.rollout.sampling_config.top_k,
+            temperature=self.config.rollout.sampling_config.temperature,
+            repetition_penalty=self.config.rollout.sampling_config.repetition_penalty,
+            max_tokens=self.config.rollout.max_response_length,
+            stop_token_ids=self.eos_token_ids,
+            include_stop_str_in_output=self.config.rollout.include_stop_str_in_output,
+            detokenize=True,
+        )
+
     def reload_weight(self):
         self.rollout_engine.llm_engine.vllm_config.load_config.load_format = "auto"
         self.rollout_engine.collective_rpc("reload_model")
@@ -157,7 +212,6 @@ class vLLMRollout(RolloutBase):
         prompt_id_and_payload_list: List[Tuple[int, Any]],
         stream: torch.cuda.Stream,
         data_packer: DataPacker,
-        sampling_params: SamplingParams,
     ) -> List[List[str]]:
         # List of payloads.
         # [
@@ -184,7 +238,7 @@ class vLLMRollout(RolloutBase):
             with torch.cuda.stream(stream):
                 results = self.rollout_engine.generate(
                     prompts=prompts,
-                    sampling_params=sampling_params,
+                    sampling_params=self.sampling_params,
                     use_tqdm=False,
                 )
 
@@ -206,3 +260,33 @@ class vLLMRollout(RolloutBase):
         Get the underlying parallelized model in vLLM internal.
         """
         return self.rollout_engine.llm_engine.model_executor.driver_worker.worker.model_runner.model
+
+    @classmethod
+    def patch_vllm_rollout_locked_step(
+        cls, rollout, consume_command, enable_validation
+    ):
+        """
+        Patch the vLLM rollout locked step to support validation.
+        """
+        llm_engine = rollout.rollout_engine.llm_engine
+        orig_step = llm_engine.step
+
+        def cmd_pred(cmd: Command, enable_validation: bool):
+            if enable_validation and isinstance(cmd, RolloutToRolloutBroadcastCommand):
+                return False
+            return True
+
+        def step(self, *args, **kwargs):
+            if not hasattr(self, "_cosmos_step_counter"):
+                self._cosmos_step_counter = 0
+            self._cosmos_step_counter += 1
+            if self._cosmos_step_counter % COSMOS_ROLLOUT_STEP_INTERVAL == 0:
+                # IMPORTANT:
+                # If validation is enabled, R2R is not expected to be called in this step function
+                # to avoid recursive inference execution.
+                consume_command(
+                    cmd_pred=partial(cmd_pred, enable_validation=enable_validation)
+                )
+            return orig_step(*args, **kwargs)
+
+        llm_engine.step = types.MethodType(step, llm_engine)

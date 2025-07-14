@@ -19,13 +19,13 @@ prevent_vllm_from_setting_nccl_env()
 import sys
 from cosmos_rl.utils.logging import logger
 from cosmos_rl.utils.parallelism import ParallelDims
-from cosmos_rl.policy.config import Config as RolloutConfig
+from cosmos_rl.policy.config import Config as CosmosConfig
 from cosmos_rl.utils.distributed import (
     init_distributed,
     destroy_distributed,
     get_controller_metadata,
 )
-from cosmos_rl.rollout.vllm_rollout.vllm_rollout_worker import vLLMRolloutWorker
+from cosmos_rl.rollout.rollout_worker import RolloutWorker
 
 
 def run_rollout(*args, **kwargs):
@@ -36,11 +36,11 @@ def run_rollout(*args, **kwargs):
             f"[Rollout] Please first go to http://{ctrl_ip}:{ctrl_port} to configure training parameters."
         )
 
-    cosmos_rollout_config = RolloutConfig.from_dict(
+    cosmos_config = CosmosConfig.from_dict(
         metadata["config"]
     )  # just use config as key temporarily
 
-    task_type = cosmos_rollout_config.train.train_policy.type
+    task_type = cosmos_config.train.train_policy.type
     if task_type not in ["grpo"]:
         logger.info(
             "[Rollout] Task in controller is not type of Reinforcement Learning. Aborted."
@@ -48,18 +48,18 @@ def run_rollout(*args, **kwargs):
         sys.exit(0)
 
     logger.info(
-        f"[Rollout] Loaded rollout configuration: {cosmos_rollout_config.rollout.model_dump()}"
+        f"[Rollout] Loaded rollout configuration: {cosmos_config.rollout.model_dump()}"
     )
 
     parallel_dims = ParallelDims.from_config(
-        parallesim_config=cosmos_rollout_config.rollout.parallelism
+        parallesim_config=cosmos_config.rollout.parallelism
     )
 
     init_distributed()
     parallel_dims.build_mesh(device_type="cuda")
 
     try:
-        rollout_worker = vLLMRolloutWorker(cosmos_rollout_config, parallel_dims)
+        rollout_worker = RolloutWorker(cosmos_config, parallel_dims)
         rollout_worker.work()
     except Exception:
         import traceback

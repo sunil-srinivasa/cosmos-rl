@@ -24,3 +24,10 @@ class RolloutBase(ABC):
     def rollout_generation(self, prompts, *args, **kwargs):
         """Generate sequences"""
         pass
+
+    @abstractmethod
+    def get_underlying_model(self):
+        """
+        Get the underlying parallelized model in rollout backend internal.
+        """
+        pass
