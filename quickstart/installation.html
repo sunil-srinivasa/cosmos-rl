@@ -127,6 +127,7 @@ docker<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </s
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>EFA driver is included in the docker image specifically for aws instances with EFA net interface (Sagemaker AI Pod).</p>
+<p>If you are not using EFA, you can build the docker image with <cite>docker build –build-arg COSMOS_RL_BUILD_MODE=no-efa -t cosmos-rl-dev:dev –target package .</cite>.</p>
 </div>
 </section>
 <section id="option-2-run-in-your-own-environment">
