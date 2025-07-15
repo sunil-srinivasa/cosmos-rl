@@ -248,7 +248,7 @@ async def generate_send_recv_insts(model: TestModel, is_send: bool, global_rank:
         return None
 
     ParallelTopoMapper.parallelism_info_for_dtensor_params = dummy
-    ParallelTopoMapper.parallelism_info_for_vllm_params = dummy
+    ParallelTopoMapper.parallelism_info_for_rollout_params = dummy
 
     policy_mapper = ParallelTopoMapperGroup(
         global_parallelism=policy_parallel_dims,
@@ -830,7 +830,7 @@ async def parallel_map_check():
         return None
 
     ParallelTopoMapper.parallelism_info_for_dtensor_params = dummy
-    ParallelTopoMapper.parallelism_info_for_vllm_params = dummy
+    ParallelTopoMapper.parallelism_info_for_rollout_params = dummy
 
     policy_mapper = ParallelTopoMapperGroup(
         global_parallelism=policy_parallel_dims,

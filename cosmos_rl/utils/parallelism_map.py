@@ -241,6 +241,7 @@ class ParallelTopoMapper:
         hf_config: Any,
         is_policy: bool,
         underlying_model: Any,
+        backend: str = "vllm",
     ):
         """
         Initialize the ParallelTopoMap with the given parallelism configurations.
@@ -251,6 +252,7 @@ class ParallelTopoMapper:
         :param hf_config: The huggingface config.
         :param is_policy: A boolean indicating if this is for policy or rollout.
         :param underlying_model: The underlying model for which the parallelism map is created.
+        :param backend: The backend to use for the rollout.
         """
         self.parallelism = parallelism
         self.parallelism_strategy = parallelism_strategy
@@ -264,6 +266,7 @@ class ParallelTopoMapper:
         self.weight_mapper = weight_mapper
         self.is_policy = is_policy
         self.underlying_model = underlying_model
+        self.backend = backend
 
     def get_full_mesh_rank_info(self, global_rank: int) -> Dict[str, DimSliceInfo]:
         """
@@ -563,7 +566,7 @@ class ParallelTopoMapper:
         if self.is_policy:
             self.parallelism_info_for_dtensor_params()
         else:
-            self.parallelism_info_for_vllm_params()
+            self.parallelism_info_for_rollout_params()
 
         for param_group in params:
             group_info = []
@@ -835,18 +838,16 @@ class ParallelTopoMapper:
                 dims_rank_info=dims_rank_info,
             )
 
-    def parallelism_info_for_vllm_params(self):
+    def parallelism_info_for_rollout_params(self):
         """
         Get the parallelism info for the vllm rollout model parameters by analyzing the model's named parameters with vllm instance check.
         Normally, this is used for rollout model parameters.
         It extracts the parallel dimensions and their shard information from the vllm model parameters.
-        The method checks if the model parameters are instances of vllm parallel layers (like QKVParallelLinear, MergedColumnParallelLinear, etc.)
+        The method checks if the model parameters are instances of rollout parallel layers (like QKVParallelLinear, MergedColumnParallelLinear, etc.)
         and extracts their detailed shard information from the parameters.
         This method updates a dictionary with parameter names as keys and their parallel dimensions with shard information as values.
         """
-        assert (
-            not self.is_policy
-        ), "parallelism_info_for_vllm_params should only be called for rollout model."
+        assert not self.is_policy, "parallelism_info_for_rollout_params should only be called for rollout model."
         if hasattr(self, "parallelism_info_for_params"):
             return self.parallelism_info_for_params
         self.parallelism_info_for_params = {}
@@ -952,6 +953,7 @@ class ParallelTopoMapperGroup:
         is_policy: bool,
         underlying_model: Any,
         weight_mapper: Optional[WeightMapper] = None,
+        backend: str = "vllm",
     ):
         """
         Initialize the ParallelTopoMapperGroup with the given parallelism configurations.
@@ -997,6 +999,7 @@ class ParallelTopoMapperGroup:
                         hf_config,
                         is_policy=is_policy,
                         underlying_model=underlying_model,
+                        backend=backend,
                     )
                 )
         else:
@@ -1009,6 +1012,7 @@ class ParallelTopoMapperGroup:
                     hf_config,
                     is_policy=is_policy,
                     underlying_model=underlying_model,
+                    backend=backend,
                 )
             )
 

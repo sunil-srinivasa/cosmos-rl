@@ -275,6 +275,7 @@ class GRPOTrainer(Trainer):
             is_policy=True,
             underlying_model=self.model,
             weight_mapper=self.model.weight_mapper,
+            backend=self.config.rollout.backend,
         ).prepare_local_shard_infos(hf_key_n_rank, self.global_rank)
         self.all_rank_local_shard_infos = dist_util.all_gather_object_cpu(
             local_shard_infos

@@ -259,6 +259,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
             is_policy=False,
             underlying_model=self.get_underlying_model(),
             weight_mapper=self.weight_mapper,
+            backend=self.config.rollout.backend,
         ).prepare_local_shard_infos(self.recv_param_key_n_rank_list, self.global_rank)
         self.all_rank_local_shard_infos = dist_util.all_gather_object_cpu(
             local_shard_infos
