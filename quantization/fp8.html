@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Single node example &mdash; cosmos-rl 0.1 documentation</title>
+  <title>FP8 Quantization &mdash; cosmos-rl 0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
@@ -19,8 +19,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Configuration" href="configuration.html" />
-    <link rel="prev" title="Installation" href="installation.html" /> 
+    <link rel="prev" title="Parallelism" href="../parallelism/overview.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,12 +42,12 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
-<ul class="current">
-<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Single node example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dataflow.html">Dataset &amp; Process</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customization.html">Customization</a></li>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/single_node_example.html">Single node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/dataflow.html">Dataset &amp; Process</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/customization.html">Customization</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Multi nodes training</span></p>
 <ul>
@@ -72,8 +71,11 @@
 <li class="toctree-l1"><a class="reference internal" href="../parallelism/overview.html">Parallelism</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Quantization</span></p>
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="../quantization/fp8.html">FP8 Quantization</a></li>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">FP8 Quantization</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#enable-fp8-quantization">Enable FP8 Quantization</a></li>
+</ul>
+</li>
 </ul>
 
         </div>
@@ -90,9 +92,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Single node example</li>
+      <li class="breadcrumb-item active">FP8 Quantization</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/quickstart/single_node_example.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/quantization/fp8.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -100,45 +102,38 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="single-node-example">
-<h1>Single node example<a class="headerlink" href="#single-node-example" title="Link to this heading"></a></h1>
-<p>This example demonstrates how to run <cite>Qwen3-8B</cite> on a single node with 8 GPUs.</p>
-<div class="doctest highlight-default notranslate"><div class="highlight"><pre><span></span><span class="gp">&gt;&gt;&gt; </span><span class="n">cosmos</span><span class="o">-</span><span class="n">rl</span> \
-<span class="go">    --config configs/qwen3/qwen3-8b-p-tp4-r-tp2-pp1-grpo.toml \</span>
-<span class="go">    --policy 1 \</span>
-<span class="go">    --rollout 2</span>
+  <section id="fp8-quantization">
+<h1>FP8 Quantization<a class="headerlink" href="#fp8-quantization" title="Link to this heading"></a></h1>
+<p>Cosmos-RL supports FP8 quantization for policy and rollout. Currently, only rowwise quantization is supported.</p>
+<section id="enable-fp8-quantization">
+<h2>Enable FP8 Quantization<a class="headerlink" href="#enable-fp8-quantization" title="Link to this heading"></a></h2>
+<p>To enable FP8 quantization, you need to set the following configuration:</p>
+<div class="highlight-toml notranslate"><div class="highlight"><pre><span></span><span class="k">[train.fp8]</span>
+<span class="n">enable_fp8</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">fp8_recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;dynamic_scaling&quot;</span>
+<span class="n">quant_recipe</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;rowwise&quot;</span>
+
+<span class="k">[rollout]</span>
+<span class="n">quantization</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;fp8&quot;</span>
 </pre></div>
 </div>
-<p>Explanation of the command:</p>
+<p>For policy:</p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--config</span></code>: the path to the training config file.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--policy</span></code>: the number of policy replicas.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--rollout</span></code>: the number of rollout replicas.</p></li>
+<li><p><cite>fp8_recipe</cite> could only be set to <cite>dynamic_scaling</cite> now.</p></li>
+<li><p><cite>quant_recipe</cite> could be set to <cite>rowwise</cite> or <cite>tensorwise</cite>. <cite>rowwise</cite> is recommended for better accuracy.</p></li>
 </ul>
-<p>As the toml file name suggests, this example uses <a class="reference external" href="https://huggingface.co/Qwen/Qwen3-8B">Qwen3-8B</a> model with:</p>
+<p>For rollout:</p>
 <ul class="simple">
-<li><p>4-way tensor parallelism for policy model</p></li>
-<li><p>2-way tensor parallelism for rollout model</p></li>
+<li><p><cite>quantization</cite> should be set to <cite>fp8</cite>. Then the rollout will dynamically quantize weights from policy to <cite>fp8</cite> during weight synchronization in <cite>rowwise</cite> manner.</p></li>
 </ul>
-<p>and total 8 GPUs are used since 1 policy and 2 rollout replicas are specified.</p>
-<p>If everything goes well, you should see the training process like this:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="o">[</span>rank0<span class="o">]</span>:<span class="o">[</span>cosmos<span class="o">]</span><span class="w"> </span><span class="m">2025</span>-06-09<span class="w"> </span><span class="m">22</span>:14:29,220<span class="w"> </span>-<span class="w"> </span>cosmos<span class="w"> </span>-<span class="w"> </span>INFO<span class="w"> </span>-<span class="w"> </span>Step:<span class="w"> </span><span class="m">1</span>/4670,<span class="w"> </span>Loss:<span class="w"> </span><span class="m">0</span>.00000
-<span class="o">[</span>rank1<span class="o">]</span>:<span class="o">[</span>cosmos<span class="o">]</span><span class="w"> </span><span class="m">2025</span>-06-09<span class="w"> </span><span class="m">22</span>:14:29,219<span class="w"> </span>-<span class="w"> </span>cosmos<span class="w"> </span>-<span class="w"> </span>INFO<span class="w"> </span>-<span class="w"> </span>Step:<span class="w"> </span><span class="m">1</span>/4670,<span class="w"> </span>Loss:<span class="w"> </span><span class="m">0</span>.00000
-...
-</pre></div>
-</div>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>You may encounter loss values of 0.0 because the GRPO advantage is zero. Since it is a toy math example, it is expected.</p>
-</div>
+</section>
 </section>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="configuration.html" class="btn btn-neutral float-right" title="Configuration" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../parallelism/overview.html" class="btn btn-neutral float-left" title="Parallelism" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
     </div>
 
   <hr/>
