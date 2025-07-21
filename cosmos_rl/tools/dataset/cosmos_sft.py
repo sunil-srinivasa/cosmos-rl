@@ -15,24 +15,25 @@
 
 import os
 import copy
-from torch.utils.data import Dataset, ConcatDataset
-from datasets import load_dataset
+from torch.utils.data import Dataset
 from cosmos_rl.launcher.worker_entry import main as launch_worker
-import cosmos_rl.utils.util as util
 from cosmos_rl.policy.config import Config
-from cosmos_rl.utils.util import basename_from_modelpath
 from cosmos_rl.policy.config import Config as CosmosConfig
 from transformers import AutoTokenizer
-import argparse
-import toml
+import json
 
-FPS = 1
+# Each demo video is about 2-4 min,
+FPS = 0.05
 MAX_PIXELS = 81920
+# Repeat the dataset for 10000 times since it only contains 3 samples
+FAKE_EPOCH = 10000
+# Corresponding to `https://gitlab-master.nvidia.com/tao-fm-applied-research/qwen2.5-vl/-/tree/main/qwen-vl-finetune/demo`
+VIDEO_PATH = "/root/cosmos-rl/qwen2.5-vl/qwen-vl-finetune/demo"
 
 
 class CosmosSFTDataset(Dataset):
-    def __init__(self, dataset: Dataset):
-        self.dataset = dataset
+    def __init__(self):
+        pass
 
     def setup(self, config: Config, tokenizer: AutoTokenizer, *args, **kwargs):
         """
@@ -40,90 +41,81 @@ class CosmosSFTDataset(Dataset):
         """
         self.config = config
         self.tokenizer = tokenizer
-
-        if config.train.train_policy.dataset.split:
-            if isinstance(config.train.train_policy.dataset.split, list):
-                dataset_list = []
-                for split_name in config.train.train_policy.dataset.split:
-                    dataset_list.append(self.dataset[split_name])
-                self.dataset = ConcatDataset(dataset_list)
-            else:
-                assert isinstance(config.train.train_policy.dataset.split, str)
-                self.dataset = self.dataset[config.train.train_policy.dataset.split]
-
-        # get multi-modal files paths
-        cosmos_cache_dir = os.environ.get(
-            "COSMOS_CACHE", os.path.join(os.path.expanduser("~"), ".cache/cosmos/")
-        )
-        video_clips_path = os.path.join(
-            cosmos_cache_dir,
-            "datasets",
-            basename_from_modelpath(config.train.train_policy.dataset.name),
-            config.train.train_policy.dataset.subset,
-            "video_clips",
-        )
-        if not os.path.exists(video_clips_path):
-            raise FileNotFoundError(
-                f"Dataset directory {video_clips_path} does not exist. Please check the dataset path."
-            )
-        mm_files_paths = {}
-        for root, dirs, files in os.walk(video_clips_path):
-            for file in files:
-                if file.endswith((".mp4", ".avi", ".mov")):  # Common video extensions
-                    mm_files_paths[file] = os.path.join(root, file)
-        self.mm_files_paths = mm_files_paths
+        self.video_json = os.path.join(VIDEO_PATH, "video.json")
+        self.video_dir = os.path.join(VIDEO_PATH, "videos")
+        with open(self.video_json, "r") as file:
+            self.dataset = json.load(file)
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.dataset) * FAKE_EPOCH
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
         """
         Return a tuple of (prompt, reference answer)
         """
-        payload = self.dataset[idx]
+        payload = self.dataset[idx % len(self.dataset)]
+        associated_video_files = payload.get("video")
+
+        # Check if the video files exist
+        if associated_video_files is not None:
+            if isinstance(associated_video_files, str):
+                associated_video_files = [associated_video_files]
+            else:
+                assert isinstance(
+                    associated_video_files, list
+                ), "Video files must be a list"
+            associated_video_files = [
+                os.path.join(self.video_dir, video_file)
+                for video_file in associated_video_files
+            ]
+            for video_file in associated_video_files:
+                assert os.path.exists(
+                    video_file
+                ), f"Video file {video_file} does not exist"
+
         conversations = copy.deepcopy(payload["conversations"])
+        content = []
 
         for conv in conversations:
+            conv["role"] = conv.pop("from")
+            conv["content"] = conv.pop("value")
+
+            # Normalize role
+            conv["role"] = {
+                "user": "user",
+                "assistant": "assistant",
+                "system": "system",
+                # for demo dataset
+                "gpt": "assistant",
+                "human": "user",
+            }[conv["role"]]
+
             if conv["role"] == "user":
                 assert isinstance(conv["content"], str), "User message must be string"
-                # Rewrite to support image/video tokens
-                content = [
-                    {
-                        "type": "video",
-                        "video": self.mm_files_paths[payload["video"].split("/")[-1]],
-                        "max_pixels": MAX_PIXELS,
-                        "fps": FPS,
-                    },
-                    {
-                        "type": "text",
-                        "text": conv["content"],
-                    },
-                ]
-                conv["content"] = content
+                n_video = conv["content"].count("<video>")
+                local_conv = []
+                for i in range(n_video):
+                    local_conv.append(
+                        {
+                            "type": "video",
+                            "video": associated_video_files[i],
+                            "max_pixels": MAX_PIXELS,
+                            "fps": FPS,
+                        }
+                    )
 
-        return conversations
+                user_content = conv["content"].replace("<video>", "").strip()
+                local_conv.append({"type": "text", "text": user_content})
+                content.append({"role": conv["role"], "content": local_conv})
+            else:
+                content.append({"role": conv["role"], "content": conv["content"]})
+        return content
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, required=True)
-    args = parser.parse_known_args()[0]
-    with open(args.config, "r") as f:
-        config = toml.load(f)
-    config = Config.from_dict(config)
-
-    # Each worker needs to prepare the data independently
-    util.prepare_cosmos_data(
-        dataset=config.train.train_policy.dataset, fps=FPS, max_pixels=MAX_PIXELS
-    )
 
     def get_dataset(config: CosmosConfig) -> Dataset:
-        dataset = load_dataset(
-            config.train.train_policy.dataset.name,
-            config.train.train_policy.dataset.subset,
-        )
-        # Prepare video files
-        return CosmosSFTDataset(dataset)
+        return CosmosSFTDataset()
 
     # It is best practice to pass the dataset as a factory function
     # so that the dataset can be loaded on demand. (Not all workers need it)
