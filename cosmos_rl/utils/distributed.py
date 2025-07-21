@@ -424,6 +424,8 @@ class HighAvailabilitylNccl:
         self.nccl_comm_count_map = {}
         self.replica_name_to_rank: Dict[str, int] = {}
 
+        self._in_fault_tolerant_runner = False
+        self._is_retry = False
         self.is_comm_ready = threading.Event()
         self.is_comm_ready.clear()
         self.is_single_peer = threading.Event()
@@ -641,32 +643,75 @@ class HighAvailabilitylNccl:
                 # execute a valid buildmesh command
                 self.__execute_build_mesh(cmd)
 
-    def __do_nccl_op_with_retry(
-        self, func: Callable, timeout_ms: Optional[int], **kwargs
-    ):
+    def __do_nccl_op(self, func: Callable, timeout_ms: Optional[int], **kwargs):
         self.__check_if_run_in_main_thread()
+        assert (
+            self._in_fault_tolerant_runner
+        ), "nccl op must be wrapped in FaultTolerantContext"
+        self._nccl_op_idx += 1
+
+        # skip those nccl ops already done
+        if self._is_retry and self._nccl_op_idx <= self._nccl_op_done_cnt:
+            return
+
+        if self.is_single_peer.is_set():
+            # Nothing to do for single peer
+            return
+
+        timeout_ms = timeout_ms if timeout_ms is not None else self.default_timeout_ms
+        with nccl_timeout_watchdog(wait_stream=True, timeout_ms=timeout_ms):
+            func(
+                comm_idx=self.comm_idx,
+                timeout_ms=timeout_ms,
+                **kwargs,
+            )
+
+    def fault_tolerant_runner(self, func: Callable, *args, **kwargs):
+        """
+        Fault tolerant runner for nccl op. All nccl op must be invoked by this runner, so that failure tolerance can work.
+
+        Known issues:
+        - can't control the nccl op repeat
+        - nranks change will make tensors allreduce in different nccl group.
+
+        Args:
+            func: the function include nccl op to be invoked.
+            *args: the args to be passed to the function.
+            **kwargs: the kwargs to be passed to the function.
+
+        TODO(zjx): fix p2p op don't hang all ranks
+        """
+        # set status
+        self._in_fault_tolerant_runner = True
+
+        # manage the status to skip those nccl ops already done in retry mode
+        self._is_retry = False
+        self._nccl_op_idx = 0
+        self._nccl_op_done_cnt = 0
+
+        all_done = False
 
         for i in range(self.max_retry):
-            self.__try_create_nccl_comm()
-
-            if self.is_single_peer.is_set():
-                # Nothing to do for single peer
-                return
-
             try:
-                timeout_ms = (
-                    timeout_ms if timeout_ms is not None else self.default_timeout_ms
-                )
-                with nccl_timeout_watchdog(wait_stream=True, timeout_ms=timeout_ms):
-                    func(
-                        comm_idx=self.comm_idx,
-                        timeout_ms=timeout_ms,
-                        **kwargs,
-                    )
+                self.__try_create_nccl_comm()
+
+                # Do user side function
+                # record nccl op count and change fault_tolerant_runner state
+                func(*args, **kwargs)
+
+                # check if all rank is successful
+                nccl_op_done = all_gather_object_cpu(True)
 
                 # if success, break the loop
-                break
-            except Exception as e:
+                if all(nccl_op_done):
+                    all_done = True
+                    break
+            except BaseException as e:
+                logger.error(f"FaultTolerantContext: {e}")
+                # mark the func run into retry mode
+                self._is_retry = True
+                self._nccl_op_done_cnt = max(0, self._nccl_op_idx - 1)
+
                 # mark the communicator is not ready
                 self.is_comm_ready.clear()
 
@@ -680,9 +725,19 @@ class HighAvailabilitylNccl:
                     self.__get_alternative_urls(COSMOS_API_NCCL_COMM_ERROR_SUFFIX),
                     max_retries=constant.COSMOS_HTTP_RETRY_CONFIG.max_retries,
                 )
+
                 logger.error(
                     f"{self.__log_prefix()} recovering nccl op '{func.__name__}' with kwargs {kwargs} after {i} retries: {e}"
                 )
+
+        # clean status
+        self._in_fault_tolerant_runner = False
+
+        # Once not all rank is successful, raise error
+        if not all_done:
+            raise RuntimeError(
+                f"{self.__log_prefix()} nccl op '{func.__name__}' with kwargs {kwargs} failed after {self.max_retry} retries"
+            )
 
     def destroy_nccl_comm(self):
         self.__execute_destroy_nccl_comm(abort=True)
@@ -694,17 +749,18 @@ class HighAvailabilitylNccl:
         """
         Check if the nccl comm is ready.
         """
-        # check the latest buildmesh command
-        self.__try_create_nccl_comm()
-
+        assert (
+            self._in_fault_tolerant_runner
+        ), "nccl op must be wrapped in FaultTolerantRunner"
         return self.is_comm_ready.is_set()
 
     def world_size(self):
         """
         Get the world size of the nccl comm.
         """
-        # check the latest buildmesh command
-        self.__try_create_nccl_comm()
+        assert (
+            self._in_fault_tolerant_runner
+        ), "nccl op must be wrapped in FaultTolerantRunner"
 
         try:
             ws = get_nccl_comm_nranks(self.comm_idx)
@@ -717,15 +773,16 @@ class HighAvailabilitylNccl:
         return ws
 
     def get_replica_rank(self, replica_name: str):
-        # check the latest buildmesh command
-        self.__try_create_nccl_comm()
+        assert (
+            self._in_fault_tolerant_runner
+        ), "nccl op must be wrapped in FaultTolerantRunner"
         return self.replica_name_to_rank[replica_name]
 
     def broadcast(
         self, tensor: torch.Tensor, src_replica: str, timeout_ms: Optional[int] = None
     ):
         src_rank = self.get_replica_rank(src_replica)
-        self.__do_nccl_op_with_retry(
+        self.__do_nccl_op(
             func=nccl_broadcast,
             tensor=tensor,
             rank=src_rank,
@@ -739,7 +796,7 @@ class HighAvailabilitylNccl:
         op: dist.ReduceOp.RedOpType = dist.ReduceOp.SUM,
         timeout_ms: Optional[int] = None,
     ):
-        self.__do_nccl_op_with_retry(
+        self.__do_nccl_op(
             func=nccl_allreduce,
             sendbuff=sendbuff,
             recvbuff=recvbuff,
@@ -751,7 +808,7 @@ class HighAvailabilitylNccl:
         self, tensor: torch.Tensor, dst_replica: str, timeout_ms: Optional[int] = None
     ):
         dst_rank = self.get_replica_rank(dst_replica)
-        self.__do_nccl_op_with_retry(
+        self.__do_nccl_op(
             func=nccl_send,
             tensor=tensor,
             peer=dst_rank,
@@ -762,7 +819,7 @@ class HighAvailabilitylNccl:
         self, tensor: torch.Tensor, src_replica: str, timeout_ms: Optional[int] = None
     ):
         src_rank = self.get_replica_rank(src_replica)
-        self.__do_nccl_op_with_retry(
+        self.__do_nccl_op(
             func=nccl_recv,
             tensor=tensor,
             peer=src_rank,
