@@ -130,7 +130,7 @@ Key design points:</p>
 <h2>Special Case: Mistral SFT with Custom Dataset Loader<a class="headerlink" href="#special-case-mistral-sft-with-custom-dataset-loader" title="Link to this heading"></a></h2>
 <p>For certain models like Mistral, SFT requires a custom dataset loader to avoid role alternation errors. Use the provided <cite>raw_text_sft.py</cite> script for this purpose.</p>
 <p>Example command:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/mistral/mistral-7b-fsdp4-sft.toml<span class="w"> </span>./cosmos_rl/tools/dataset/dummy_sft.py
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/mistral/mistral-7b-fsdp4-sft.toml<span class="w"> </span>cosmos_rl.tools.dataset.dummy_sft.py
 </pre></div>
 </div>
 <p>Another example for different configuration:</p>

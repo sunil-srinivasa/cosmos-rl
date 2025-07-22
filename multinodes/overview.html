@@ -158,7 +158,7 @@
 <span class="go">        --lepton-secret HUGGING_FACE_HUB_TOKEN={your-hugging-face-token} \</span>
 <span class="go">        --policy 8 \</span>
 <span class="go">        --rollout 4 \</span>
-<span class="go">        /workspace/cosmos_rl/tools/dataset/math_dapo.py</span>
+<span class="go">        cosmos_rl.tools.dataset.math_dapo</span>
 </pre></div>
 </div>
 <p>Total <cite>8*4 + 4*2 = 40</cite> GPUs are used. (5 <cite>8xH100</cite> nodes will be allocated for this job)</p>
@@ -177,7 +177,7 @@
 <span class="go">        --cosmos-container ${YOUR_COSMOS_SQSQ_PATH} \</span>
 <span class="go">        --slurm-partition ${YOUR_SLURM_PARTITION} \</span>
 <span class="go">        --slurm-account ${YOUR_SLURM_ACCOUNT} \</span>
-<span class="go">        tools/dataset/gsm8k_grpo.py</span>
+<span class="go">        cosmos_rl.tools.dataset.gsm8k_grpo</span>
 </pre></div>
 </div>
 <p>Total <cite>8*8 + 4*4 = 64</cite> GPUs are used. (8 <cite>8xH100</cite> nodes will be allocated for this job)</p>
