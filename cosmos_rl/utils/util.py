@@ -1051,3 +1051,28 @@ def sanitize(obj):
         return [sanitize(v) for v in obj]
     else:
         return obj
+
+
+def safe_deep_getattr(obj, attr_path, default=None):
+    try:
+        for attr in attr_path.split("."):
+            obj = getattr(obj, attr)
+        return obj
+    except AttributeError:
+        return default
+
+
+def load_model_class_by_config(hf_config):
+    architectures = hf_config.architectures
+    assert (
+        len(architectures) == 1
+    ), f"zero or multiple architectures in config.json is not supported, {architectures=}"
+
+    class_name = architectures[0]
+    model_class = None
+    try:
+        model_class = getattr(importlib.import_module("transformers"), class_name)
+    except Exception as e:
+        logger.error(f"Can not load {class_name} from transformers")
+        raise e
+    return model_class

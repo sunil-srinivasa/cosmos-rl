@@ -28,12 +28,25 @@ class HFLLMWeightMapper(WeightMapper):
             self.config.num_attention_heads // self.config.num_key_value_heads
         )
         self.head_dim = self.config.hidden_size // self.config.num_attention_heads
+        self.is_vlm = getattr(self.config, "vision_config", None) is not None
 
     def _rollout_vllm_name_to_hf(self, rollout_weight_name: str) -> str:
         # Happen to be the same as policy name mapping.
         return self.policy_map_local_key_to_hf_key(rollout_weight_name)
 
     def _rollout_split_qkv_weight(self, name, weight: torch.Tensor):
+        if "visual" in name or "vision_tower" in name:
+            # split qkv weight for visual
+            # weight has shape [3 * head_dim, hidden_dim]
+            # kv head ratio is 1, so we can split it into q, k, v
+            assert (
+                weight.shape[0] % 3 == 0
+            ), "Weight shape is not compatible for splitting."
+            unit_dim = weight.shape[0] // 3  # for both weight and bias
+            q_weight = weight[:unit_dim]
+            k_weight = weight[unit_dim : unit_dim * 2]
+            v_weight = weight[unit_dim * 2 :]
+            return q_weight, k_weight, v_weight
         # weight has shape [q_num_heads * head_dim + k_num_heads * head_dim + v_num_heads * head_dim, hidden_dim]
         shares = self.kv_head_ratio + 2
         dim_0 = weight.shape[0]  # for both weight and bias
@@ -91,6 +104,21 @@ class HFLLMWeightMapper(WeightMapper):
                 up_proj_weight_key = compatible_key.replace("gate_up_proj", "up_proj")
                 vllm_weight_inplace_view_map[up_proj_weight_key] = up_proj_weight
                 group_keys.append((up_proj_weight_key, up_proj_weight.ndim))
+            elif "qkv" in compatible_key and (
+                "visual" in compatible_key or "vision_tower" in compatible_key
+            ):
+                q_weight, k_weight, v_weight = self.__rollout_split_qkv_weight(
+                    compatible_key, param
+                )
+                q_visual_proj_weight_key = compatible_key.replace("qkv", "q")
+                k_visual_proj_weight_key = compatible_key.replace("qkv", "k")
+                v_visual_proj_weight_key = compatible_key.replace("qkv", "v")
+                vllm_weight_inplace_view_map[q_visual_proj_weight_key] = q_weight
+                group_keys.append((q_visual_proj_weight_key, q_weight.ndim))
+                vllm_weight_inplace_view_map[k_visual_proj_weight_key] = k_weight
+                group_keys.append((k_visual_proj_weight_key, k_weight.ndim))
+                vllm_weight_inplace_view_map[v_visual_proj_weight_key] = v_weight
+                group_keys.append((v_visual_proj_weight_key, v_weight.ndim))
             else:
                 vllm_weight_inplace_view_map[compatible_key] = param
                 group_keys.append((compatible_key, param.ndim))
@@ -100,17 +128,24 @@ class HFLLMWeightMapper(WeightMapper):
 
     def policy_map_local_key_to_hf_key(self, name: str) -> str:
         name = util.clear_weight_name(name)
-        if not name == "lm_head.weight":
-            if not name.startswith("model."):
-                name = "model." + name
+        if self.is_vlm:
+            pass
+            # if name.startswith("language_model."):
+            #     name = name.replace("language_model.", "")
+            # if name == "model.lm_head.weight":
+            #     name = "lm_head.weight"
+        else:
+            if not name == "lm_head.weight":
+                if not name.startswith("model."):
+                    name = "model." + name
         return name
 
     def name_to_model_part_index(self, dest_name: str) -> int:
         if dest_name in ["lm_head.weight", "lm_head.bias"]:
             return 0
-        elif dest_name.startswith("visual."):
+        elif dest_name.startswith("visual.") or dest_name.startswith("vision_tower."):
             return 1
-        elif dest_name.startswith("model."):
+        elif dest_name.startswith("model.") or dest_name.startswith("language_model."):
             return 0
         else:
             raise ValueError(f"Unsupported weight: {dest_name}")
@@ -172,6 +207,36 @@ class HFLLMWeightMapper(WeightMapper):
             )
             return split_strategy
         elif match := re.search(  # noqa: F841
+            r"(visual|vision_tower)\.blocks\.(\d+)\.attn\.qkv\.(weight|bias)",
+            name,
+        ):
+            split_strategy = []
+            # The first part of the split:
+            # the dictionary means at dimension 0, extract the part of offset 0 and length 1 when regarding the whole 0 dimension as length 3.
+            split_strategy.append(
+                (
+                    name.replace("qkv", "q"),
+                    {0: {"offset": 0, "total_size": 3, "length": 1}},
+                )
+            )
+            # The second part of the split:
+            # the dictionary means at dimension 0, extract the part of offset 1 and length 1 when regarding the whole 0 dimension as length 3.
+            split_strategy.append(
+                (
+                    name.replace("qkv", "k"),
+                    {0: {"offset": 1, "total_size": 3, "length": 1}},
+                )
+            )
+            # The third part of the split:
+            # the dictionary means at dimension 0, extract the part of offset 2 and length 1 when regarding the whole 0 dimension as length 3.
+            split_strategy.append(
+                (
+                    name.replace("qkv", "v"),
+                    {0: {"offset": 2, "total_size": 3, "length": 1}},
+                )
+            )
+            return split_strategy
+        elif match := re.search(  # noqa: F841
             r"model\.layers\.(\d+)\.mlp\.gate_up_proj\.(weight|bias)",
             name,
         ):
@@ -198,4 +263,9 @@ class HFLLMWeightMapper(WeightMapper):
         for key in ["gate_proj", "up_proj"]:
             if key in weight_key:
                 return weight_key.replace(key, "gate_up_proj")
+        for key in ["q", "k", "v"]:
+            if (
+                "visual" in weight_key or "vision_tower" in weight_key
+            ) and key in weight_key:
+                return weight_key.replace(key, "qkv")
         return weight_key  # return full weight key
