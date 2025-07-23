@@ -185,7 +185,7 @@ def apply_ac(model: nn.Module):
         model.lm_layers.register_module(layer_id, transformer_block)
 
     if model.vision_model is not None:
-        for layer_id, transformer_block in model.vision_layers.named_children()():
+        for layer_id, transformer_block in model.vision_layers.named_children():
             transformer_block = _apply_ac_to_transformer_block(transformer_block)
             model.vision_layers.register_module(layer_id, transformer_block)
 
