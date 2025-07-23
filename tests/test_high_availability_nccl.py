@@ -27,6 +27,7 @@ from functools import partial
 import requests
 import atexit
 from queue import Queue, Empty
+from typing import Optional
 
 from cosmos_rl.utils.logging import logger
 from cosmos_rl.utils import constant
@@ -217,7 +218,9 @@ class TestHANccl(CommMixin):
             time.sleep(0.1)
         logger.info(f"fetch command thread is stopped: {self.replica_name}")
 
-    def fetch_command(self, block: bool = True) -> list[Command]:
+    def fetch_command(
+        self, block: bool = True, comm: Optional[HighAvailabilitylNccl] = None
+    ) -> list[Command]:
         if not self._is_registered:
             return []
 
@@ -227,6 +230,14 @@ class TestHANccl(CommMixin):
                 cmds.append(self.command_queue.get())
         except Empty:
             return []
+
+        if comm is not None:
+            for cmd in cmds:
+                if isinstance(cmd, BuildMeshCommand):
+                    logger.debug(
+                        f"  {self.replica_name} use command {cmd.replica_name_to_rank}"
+                    )
+                    comm.push_cmd(cmd)
         return cmds
 
     def test_comm_auto_rebuild_normal(self):
@@ -256,11 +267,14 @@ class TestHANccl(CommMixin):
                 comm.push_cmd(cmd)
 
         # 2. wait for the comm to be ready
-        comm.is_ready()
+        def op_helper():
+            comm.is_ready()
 
-        assert (
-            comm.world_size() == dist.get_world_size()
-        ), f"world size should be {dist.get_world_size()}"
+            assert (
+                comm.world_size() == dist.get_world_size()
+            ), f"world size should be {dist.get_world_size()}"
+
+        comm.fault_tolerant_runner(op_helper)
         comm.destroy_nccl_comm()
         logger.info(f"  === normal case, passed {self.replica_name}")
 
@@ -281,28 +295,34 @@ class TestHANccl(CommMixin):
         )
 
         # wait all ranks fetch latest command from controller
-        dist.barrier()
         time.sleep(2)
+        dist.barrier()
+
+        # consume all buildmesh commands, avoid replica 1 exit before buildmesh command is executed
+        self.fetch_command(comm=comm)
+        comm._try_create_nccl_comm()
+        dist.barrier()
 
         # 2. test intiative scale down
+        def op_helper():
+            assert (
+                comm.world_size() == dist.get_world_size() - 1
+            ), f"world size should be {dist.get_world_size() - 1}, actual {comm.world_size()}"
+
         if self.replica_rank == 1:
             # use unregister to trigger the buildmesh command
             self.unregister_from_controller()
         else:
             # other rank do scale down buildmesh
-            while True:
+            st = time.time()
+            while (
+                time.time() - st < 10
+            ):  # wait for 10 seconds to get all buildmesh commands
                 # wait until controller trigger the buildmesh command
-                cmds = self.fetch_command()
-                cmds = [cmd for cmd in cmds if isinstance(cmd, BuildMeshCommand)]
-                if len(cmds) == 0:
-                    time.sleep(0.1)
-                    continue
-                for cmd in cmds:
-                    comm.push_cmd(cmd)
-                break
-            assert (
-                comm.world_size() == dist.get_world_size() - 1
-            ), f"world size should be {dist.get_world_size() - 1}, actual {comm.world_size()}"
+                self.fetch_command(block=False, comm=comm)
+
+            # 如果一开始，有节点就没执行 buildmesh cmd，那么会导致部分节点无法消耗 cmd
+            comm.fault_tolerant_runner(op_helper)
 
         comm.destroy_nccl_comm()
         logger.info(f"  === intiative scale down, passed {self.replica_name}")
@@ -324,6 +344,13 @@ class TestHANccl(CommMixin):
         )
 
         dist.barrier()
+        time.sleep(2)
+
+        # consume all buildmesh commands, avoid replica 1 exit before buildmesh command is executed
+        self.fetch_command(comm=comm)
+        comm._try_create_nccl_comm()
+
+        dist.barrier()
         world_size = dist.get_world_size()
         # 2. trigger buildmesh command over all ranks
         if self.replica_rank == 1:
@@ -343,6 +370,24 @@ class TestHANccl(CommMixin):
         logger.info(
             f"  replica_rank {self.replica_rank} prepare buildmesh timeout environment"
         )
+
+        def op_helper():
+            retry_count = 0
+            while retry_count < 100:
+                # here we wait rebuild comm until nranks equals to the world size - 1
+                if comm.is_ready():
+                    break
+
+                # query timeout commands and push to comm,
+                self.fetch_command(block=False, comm=comm)
+                time.sleep(5)
+                retry_count += 1
+
+            assert comm.is_ready(), "comm is not ready"
+            assert (
+                comm.world_size() == world_size - 1
+            ), f"world size should be {world_size - 1}, actual {comm.world_size()}"
+
         if self.replica_rank == 1:
             logger.info(
                 "  replica_rank 1 exit, wait for other ranks to timeout and execute the build mesh command"
@@ -358,34 +403,13 @@ class TestHANccl(CommMixin):
             )
             comm.push_cmd(cmd)
 
-            retry_count = 0
-            while retry_count < 100:
-                # here we wait rebuild comm until nranks equals to the world size - 1
-                if comm.is_ready():
-                    break
-
-                # query timeout commands and push to comm,
-                cmds = self.fetch_command(block=False)
-                cmds = [cmd for cmd in cmds if isinstance(cmd, BuildMeshCommand)]
-                for cmd in cmds:
-                    logger.info(
-                        f"  replica_rank {self.replica_rank} retry, push cmd: {cmd.replica_name_to_rank}"
-                    )
-                    comm.push_cmd(cmd)
-
-                time.sleep(5)
-                retry_count += 1
-
-            assert comm.is_ready(), "comm is not ready"
-            assert (
-                comm.world_size() == world_size - 1
-            ), f"world size should be {world_size - 1}, actual {comm.world_size()}"
+            comm.fault_tolerant_runner(op_helper)
 
         # finally, shutdown the comm
         comm.destroy_nccl_comm()
         logger.info(f" === test_comm_auto_rebuild passed {self.replica_name}")
 
-    def test_allreduce_timeout_retry(self):
+    def test_multi_allreduce_timeout_retry(self):
         """
         Run the NCCL test.
         """

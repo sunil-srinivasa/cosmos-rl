@@ -397,6 +397,9 @@ def all_gather_object_cpu(obj, device=torch.device("cpu"), group=None):
     if world_size == 1:
         return [obj]
 
+    if group is not None:
+        world_size = dist.get_world_size(group)
+
     obj_lst = [None for i in range(world_size)]
     dist.all_gather_object(obj_lst, obj, group=group)
     return obj_lst
@@ -460,12 +463,20 @@ class HighAvailabilitylNccl:
         else:
             return f"[HA_NCCL][global_rank {self.global_rank}] {self.replica_name}"
 
-    def __check_if_run_in_main_thread(self):
-        if threading.current_thread() != threading.main_thread():
-            # To avoid nccl/gloo hanging, we only allow nccl op to be run in main thread
-            raise RuntimeError(
-                f"{self.__log_prefix()} nccl op should be run only in main thread"
-            )
+    def __check_run_environment(self):
+        """
+        Check if the run environment is valid.
+        """
+
+        # To avoid nccl/gloo hanging, we only allow nccl op to be run in main thread
+        assert (
+            threading.current_thread() == threading.main_thread()
+        ), f"{self.__log_prefix()} nccl op should be run only in main thread"
+
+        # Make sure the nccl op is wrapped in FaultTolerantRunner
+        assert (
+            self._in_fault_tolerant_runner
+        ), "nccl op must be wrapped in FaultTolerantRunner"
 
     def __execute_destroy_nccl_comm(self, abort: bool = False):
         self.is_comm_ready.clear()
@@ -624,13 +635,16 @@ class HighAvailabilitylNccl:
         )
         return cmd
 
-    def __try_create_nccl_comm(self):
+    def _try_create_nccl_comm(self):
         """
         Use a greedy algorithm to create nccl comm.
         We will execute every buildmesh command in order, and return until there is no newer buildmesh command.
 
             - During register replica, controller will trigger a buildmesh command.
             - Replica nccl timeout will also trigger a buildmesh command, which can be detected by this Object.
+
+        Know issue:
+            - If some replicas exit before buildmesh command is executed, this function will block for a lang time.
         """
 
         # rank0 will run out of cmd, until comm is ready.
@@ -644,10 +658,7 @@ class HighAvailabilitylNccl:
                 self.__execute_build_mesh(cmd)
 
     def __do_nccl_op(self, func: Callable, timeout_ms: Optional[int], **kwargs):
-        self.__check_if_run_in_main_thread()
-        assert (
-            self._in_fault_tolerant_runner
-        ), "nccl op must be wrapped in FaultTolerantContext"
+        self.__check_run_environment()
         self._nccl_op_idx += 1
 
         # skip those nccl ops already done
@@ -671,8 +682,8 @@ class HighAvailabilitylNccl:
         Fault tolerant runner for nccl op. All nccl op must be invoked by this runner, so that failure tolerance can work.
 
         Known issues:
-        - can't control the nccl op repeat
-        - nranks change will make tensors allreduce in different nccl group.
+            - invoke gloo op in `func` will cause nccl op hang
+            - nranks change will make tensors allreduce in different nccl group.
 
         Args:
             func: the function include nccl op to be invoked.
@@ -692,22 +703,15 @@ class HighAvailabilitylNccl:
         all_done = False
 
         for i in range(self.max_retry):
+            exc: BaseException | None = None
             try:
-                self.__try_create_nccl_comm()
+                self._try_create_nccl_comm()
 
                 # Do user side function
                 # record nccl op count and change fault_tolerant_runner state
                 func(*args, **kwargs)
-
-                # check if all rank is successful
-                nccl_op_done = all_gather_object_cpu(True)
-
-                # if success, break the loop
-                if all(nccl_op_done):
-                    all_done = True
-                    break
             except BaseException as e:
-                logger.error(f"FaultTolerantContext: {e}")
+                exc = e
                 # mark the func run into retry mode
                 self._is_retry = True
                 self._nccl_op_done_cnt = max(0, self._nccl_op_idx - 1)
@@ -729,6 +733,15 @@ class HighAvailabilitylNccl:
                 logger.error(
                     f"{self.__log_prefix()} recovering nccl op '{func.__name__}' with kwargs {kwargs} after {i} retries: {e}"
                 )
+            finally:
+                # always check if all ranks are successful without exception
+                nccl_op_done_list = all_gather_object_cpu(
+                    exc is None, group=self.replica_group
+                )
+                logger.debug(f"{self.__log_prefix()} done list: {nccl_op_done_list}")
+                if all(nccl_op_done_list):
+                    all_done = True
+                    break
 
         # clean status
         self._in_fault_tolerant_runner = False
@@ -749,18 +762,14 @@ class HighAvailabilitylNccl:
         """
         Check if the nccl comm is ready.
         """
-        assert (
-            self._in_fault_tolerant_runner
-        ), "nccl op must be wrapped in FaultTolerantRunner"
+        self.__check_run_environment()
         return self.is_comm_ready.is_set()
 
     def world_size(self):
         """
         Get the world size of the nccl comm.
         """
-        assert (
-            self._in_fault_tolerant_runner
-        ), "nccl op must be wrapped in FaultTolerantRunner"
+        self.__check_run_environment()
 
         try:
             ws = get_nccl_comm_nranks(self.comm_idx)
@@ -773,9 +782,6 @@ class HighAvailabilitylNccl:
         return ws
 
     def get_replica_rank(self, replica_name: str):
-        assert (
-            self._in_fault_tolerant_runner
-        ), "nccl op must be wrapped in FaultTolerantRunner"
         return self.replica_name_to_rank[replica_name]
 
     def broadcast(
