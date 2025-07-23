@@ -48,11 +48,11 @@ def parallelize(
 
     assert (
         not parallel_dims.tp_enabled
-    ), "Tensor parallelism is not supported for HFLLMModel"
+    ), "Tensor parallelism is not supported for HFModel"
     assert (
         not parallel_dims.cp_enabled
-    ), "Context parallelism is not supported for HFLLMModel"
-    assert pp_size == 1, "Pipeline parallelism is not supported for HFLLMModel"
+    ), "Context parallelism is not supported for HFModel"
+    assert pp_size == 1, "Pipeline parallelism is not supported for HFModel"
 
     if config.policy.model_gradient_checkpointing:
         apply_ac(model)

@@ -21,7 +21,7 @@ from cosmos_rl.utils import util
 from transformers import AutoConfig
 
 
-class HFLLMWeightMapper(WeightMapper):
+class HFModelWeightMapper(WeightMapper):
     def __init__(self, hf_config: AutoConfig):
         super().__init__(hf_config)
         self.kv_head_ratio = (

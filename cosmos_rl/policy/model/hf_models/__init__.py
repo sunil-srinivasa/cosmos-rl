@@ -28,26 +28,25 @@ from cosmos_rl.utils.util import (
 from cosmos_rl.utils.constant import COSMOS_HF_MODEL_TYPES
 from cosmos_rl.policy.model.base import BaseModel, ModelRegistry
 from cosmos_rl.utils.logging import logger
-from cosmos_rl.policy.model.hf_llm.weight_converter import convert_weight_from_hf
-from cosmos_rl.policy.model.hf_llm.weight_mapper import HFLLMWeightMapper
+from cosmos_rl.policy.model.hf_models.weight_converter import convert_weight_from_hf
+from cosmos_rl.policy.model.hf_models.weight_mapper import HFModelWeightMapper
 from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.policy.config import Config as CosmosConfig
 from functools import cached_property
 
 
-@ModelRegistry.register(HFLLMWeightMapper)
-class HFLLMModel(BaseModel):
+@ModelRegistry.register(HFModelWeightMapper)
+class HFModel(BaseModel):
     """
-    HFLLM Module
+    HFModel Module
 
     Args:
         hf_config : Model configuration arguments.
-        model: AutoModelForCausalLM model.
+        model: model loaded from hf.
 
     Attributes:
         hf_config : Model configuration arguments.
-        model: AutoModelForCausalLM model.
-        layers: List of AutoModelForCausalLM blocks.
+        model: model loaded from hf.
     """
 
     @staticmethod
@@ -351,7 +350,7 @@ class HFLLMModel(BaseModel):
 
     @property
     def parallelize_fn(self):
-        from cosmos_rl.policy.model.hf_llm.parallelize import parallelize
+        from cosmos_rl.policy.model.hf_models.parallelize import parallelize
 
         return parallelize, self
 
@@ -361,7 +360,7 @@ class HFLLMModel(BaseModel):
         This typically involves splitting the model into multiple stages,
         and moving each stage to a different device.
         """
-        assert False, "Pipeline split is not supported for HFLLMModel"
+        assert False, "Pipeline split is not supported for HFModel"
 
     def load_hf_weights(
         self,
@@ -519,15 +518,15 @@ class HFLLMModel(BaseModel):
         return n_params, n_flops
 
     @classmethod
-    def from_model_args(cls, hf_config) -> "HFLLMModel":
+    def from_model_args(cls, hf_config) -> "HFModel":
         """
-        Initialize a HFLLM model from a HFLLMArgs object.
+        Initialize a HFModel model from a HFModelArgs object.
 
         Args:
             hf_config : hf model config.
 
         Returns:
-            HFLLMModel: HFLLM model.
+            HFModel: HFModel model.
 
         """
         is_vlm = getattr(hf_config, "vision_config", None) is not None
@@ -546,9 +545,9 @@ class HFLLMModel(BaseModel):
         hf_config: AutoConfig,
         model_name_or_path: str,
         max_position_embeddings: Optional[int] = None,
-    ) -> "HFLLMModel":
+    ) -> "HFModel":
         """
-        Initialize a HFLLM model from a pretrained model.
+        Initialize a HFModel model from a pretrained model.
 
         Args:
             hf_config (AutoConfig): HuggingFace config.
@@ -556,7 +555,7 @@ class HFLLMModel(BaseModel):
             max_position_embeddings (int): Maximum position embeddings.
 
         Returns:
-            HFLLMModel: HFLLM model.
+            HFModel: HFModel model.
 
         """
 
@@ -583,5 +582,5 @@ class HFLLMModel(BaseModel):
         return llm + visual
 
     def check_cp_compatible(self, cp_size: int, tp_size: int):
-        assert cp_size == 1, "cp is not supported for HFLLMModel"
-        assert tp_size == 1, "tp is not supported for HFLLMModel"
+        assert cp_size == 1, "cp is not supported for HFModel"
+        assert tp_size == 1, "tp is not supported for HFModel"
