@@ -107,7 +107,7 @@ class HFLLMWeightMapper(WeightMapper):
             elif "qkv" in compatible_key and (
                 "visual" in compatible_key or "vision_tower" in compatible_key
             ):
-                q_weight, k_weight, v_weight = self.__rollout_split_qkv_weight(
+                q_weight, k_weight, v_weight = self._rollout_split_qkv_weight(
                     compatible_key, param
                 )
                 q_visual_proj_weight_key = compatible_key.replace("qkv", "q")
@@ -129,11 +129,10 @@ class HFLLMWeightMapper(WeightMapper):
     def policy_map_local_key_to_hf_key(self, name: str) -> str:
         name = util.clear_weight_name(name)
         if self.is_vlm:
-            pass
-            # if name.startswith("language_model."):
-            #     name = name.replace("language_model.", "")
-            # if name == "model.lm_head.weight":
-            #     name = "lm_head.weight"
+            if name.startswith("language_model."):
+                name = name.replace("language_model.", "")
+            if name == "model.lm_head.weight":
+                name = "lm_head.weight"
         else:
             if not name == "lm_head.weight":
                 if not name.startswith("model."):
