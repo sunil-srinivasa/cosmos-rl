@@ -15,6 +15,7 @@
 
 import torch
 from torch import nn
+import inspect
 from typing import Tuple, List, Optional, Callable
 from transformers import AutoConfig
 from cosmos_rl.utils.util import (
@@ -60,13 +61,113 @@ class HFLLMModel(BaseModel):
         self.model_class = model_class
         self.is_vlm = is_vlm
 
+    @cached_property
+    def model_forward_valid_kwargs(self):
+        sig = inspect.signature(self.model.forward)
+        return sig.parameters.keys()
+
+    def _process_vision_embeddings(
+        self, inputs_embeds, input_ids, pixel_values, grid_thw, pad_token_id
+    ):
+        """Helper function to process vision embeddings (images or videos)"""
+        n_tokens = (input_ids == pad_token_id).sum().item()
+        if n_tokens > 0:
+            # TODO: check whether vision_model.forward has grid_thw as input
+            # e.g. vision models like SiglipVisionModel do not have grid_thw as input
+            vision_embeds = self.vision_model(pixel_values, grid_thw=grid_thw)
+            assert (
+                vision_embeds.shape[0] == n_tokens
+            ), "vision_embeds.shape[0] must be equal to n_tokens"
+            mask = input_ids == pad_token_id
+            mask_unsqueezed = mask.unsqueeze(-1)
+            mask_expanded = mask_unsqueezed.expand_as(inputs_embeds)
+            vision_mask = mask_expanded.to(inputs_embeds.device)
+
+            vision_embeds = vision_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            inputs_embeds = inputs_embeds.masked_scatter(vision_mask, vision_embeds)
+        return inputs_embeds
+
     def forward(
         self,
         input_ids: torch.Tensor,
         position_ids: torch.Tensor = None,
+        pixel_values: Optional[torch.Tensor] = None,
+        pixel_values_videos: Optional[torch.Tensor] = None,
+        image_grid_thw: Optional[torch.LongTensor] = None,
+        video_grid_thw: Optional[torch.LongTensor] = None,
+        pixel_values_lengths_per_sample: Optional[torch.Tensor] = None,
+        pixel_values_videos_lengths_per_sample: Optional[torch.Tensor] = None,
         *args,
         **kwargs,
     ):
+        kwargs_filtered = {
+            k: v for k, v in kwargs.items() if k in self.model_forward_valid_kwargs
+        }
+        if self.is_vlm:
+            embed_tokens = getattr(self.language_model, "embed_tokens", None)
+            assert embed_tokens is not None, "embed_tokens is not found"
+            inputs_embeds = embed_tokens(input_ids)
+            n_image_tokens = (input_ids == self.image_token_id).sum().item()
+            n_video_tokens = (
+                0
+                if self.video_token_id is None
+                else (input_ids == self.video_token_id).sum().item()
+            )
+            if n_image_tokens > 0:
+                assert (
+                    image_grid_thw is not None
+                ), "image_grid_thw must be provided if there are image tokens"
+                total_image_lengths = pixel_values_lengths_per_sample.sum().item()
+                unpadded_pixels = torch.zeros(
+                    total_image_lengths,
+                    pixel_values.shape[2],
+                    device=pixel_values.device,
+                    dtype=pixel_values.dtype,
+                )
+                current_index = 0
+                for i in range(pixel_values_lengths_per_sample.shape[0]):
+                    image_length = pixel_values_lengths_per_sample[i].item()
+                    unpadded_pixels[current_index : current_index + image_length] = (
+                        pixel_values[i, :image_length]
+                    )
+                    current_index += image_length
+                inputs_embeds = self._process_vision_embeddings(
+                    inputs_embeds,
+                    input_ids,
+                    unpadded_pixels,
+                    image_grid_thw,
+                    self.image_token_id,
+                )
+
+            if n_video_tokens > 0:
+                assert (
+                    video_grid_thw is not None
+                ), "video_grid_thw must be provided if there are video tokens"
+                total_video_lengths = (
+                    pixel_values_videos_lengths_per_sample.sum().item()
+                )
+                unpadded_pixels = torch.zeros(
+                    total_video_lengths,
+                    pixel_values_videos.shape[2],
+                    device=pixel_values_videos.device,
+                    dtype=pixel_values_videos.dtype,
+                )
+                current_index = 0
+                for i in range(pixel_values_videos_lengths_per_sample.shape[0]):
+                    video_length = pixel_values_videos_lengths_per_sample[i].item()
+                    unpadded_pixels[current_index : current_index + video_length] = (
+                        pixel_values_videos[i, :video_length]
+                    )
+                    current_index += video_length
+                inputs_embeds = self._process_vision_embeddings(
+                    inputs_embeds,
+                    input_ids,
+                    unpadded_pixels,
+                    video_grid_thw,
+                    self.video_token_id,
+                )
+            kwargs_filtered["inputs_embeds"] = inputs_embeds
+
         out = self.model(
             input_ids,
             position_ids=position_ids,
@@ -74,9 +175,28 @@ class HFLLMModel(BaseModel):
             past_key_values=None,
             use_cache=False,
             *args,
-            **kwargs,
+            **kwargs_filtered,
         )
         return out.logits
+
+    @property
+    def image_token_id(self):
+        # image_token_id or image_token_index
+        image_token_id = None
+        if self.is_vlm:
+            if hasattr(self.hf_config, "image_token_id"):
+                # Qwen2_5_VL
+                image_token_id = self.hf_config.image_token_id
+            elif hasattr(self.hf_config, "image_token_index"):
+                # Gemma3-it
+                image_token_id = self.hf_config.image_token_index
+            else:
+                raise ValueError(f"Can not get image token id from {self.hf_config}")
+        return image_token_id
+
+    @property
+    def video_token_id(self):
+        return self.hf_config.video_token_id if self.is_vlm else None
 
     @property
     def lm_layers(self):
