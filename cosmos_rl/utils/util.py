@@ -1032,3 +1032,15 @@ def sanitize(obj):
         return [sanitize(v) for v in obj]
     else:
         return obj
+
+
+class FakeException(BaseException):
+    """
+    FakeException is used to avoid catching by Exception handler.
+    """
+
+    def __init__(self, message: str):
+        self.message = message
+
+    def __str__(self):
+        return self.message

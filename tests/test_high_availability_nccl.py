@@ -298,11 +298,6 @@ class TestHANccl(CommMixin):
         time.sleep(2)
         dist.barrier()
 
-        # consume all buildmesh commands, avoid replica 1 exit before buildmesh command is executed
-        self.fetch_command(comm=comm)
-        comm._try_create_nccl_comm()
-        dist.barrier()
-
         # 2. test intiative scale down
         def op_helper():
             assert (
@@ -346,11 +341,6 @@ class TestHANccl(CommMixin):
         dist.barrier()
         time.sleep(2)
 
-        # consume all buildmesh commands, avoid replica 1 exit before buildmesh command is executed
-        self.fetch_command(comm=comm)
-        comm._try_create_nccl_comm()
-
-        dist.barrier()
         world_size = dist.get_world_size()
         # 2. trigger buildmesh command over all ranks
         if self.replica_rank == 1:

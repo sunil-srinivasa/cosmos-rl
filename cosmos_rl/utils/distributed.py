@@ -40,7 +40,7 @@ from torch.distributed.tensor.parallel import ParallelStyle
 from cosmos_rl.utils.logging import logger
 from cosmos_rl.utils.network_util import make_request_with_retry
 from cosmos_rl.utils import constant, network_util
-from cosmos_rl.utils.util import list_to_b64, b64_to_list
+from cosmos_rl.utils.util import list_to_b64, b64_to_list, FakeException
 from cosmos_rl.dispatcher.command import Command, BuildMeshCommand
 from cosmos_rl.utils.api_suffix import (
     COSMOS_API_META_SUFFIX,
@@ -493,6 +493,10 @@ class HighAvailabilitylNccl:
                 self.comm_idx = -1
 
     def __execute_build_mesh(self, cmd: BuildMeshCommand):
+        """
+        Execute the build mesh command.
+        always check the cmd queue, if cmd queue is not empty, return immediately.
+        """
         logger.debug(
             f"{self.__log_prefix()} build mesh with {cmd.replica_name_to_rank}"
         )
@@ -509,6 +513,14 @@ class HighAvailabilitylNccl:
         # continue to build nccl comm
         rank = cmd.replica_name_to_rank[self.replica_name]
         nccl_group_id = None
+
+        # This feature is used to interrupt the request immediately when cmd queue is not empty,
+        # because of we only execute latest buildmesh command.
+        def _post_with_check_queue(*args, json, **kwargs):
+            if not self.cmd_queue.empty():
+                raise FakeException("interrupt request immediately")
+            return requests.post(*args, json=json, **kwargs)
+
         if rank == 0:
             # initialize nccl handle for building mesh among policies
             # only replica_rank == 0 have the right to generate nccl id.
@@ -520,7 +532,7 @@ class HighAvailabilitylNccl:
             try:
                 make_request_with_retry(
                     partial(
-                        requests.post,
+                        _post_with_check_queue,
                         json={
                             "unique_pair_name": self.__get_mesh_unique_key(
                                 cmd.replica_name_to_rank
@@ -531,6 +543,9 @@ class HighAvailabilitylNccl:
                     self.__get_alternative_urls(COSMOS_API_NCCL_COMM_INITIATOR_SUFFIX),
                     max_retries=constant.COSMOS_HTTP_RETRY_CONFIG.max_retries,
                 )
+            except FakeException:
+                # interrupt request immediately, and execute the next cmd
+                return
             except Exception as e:
                 raise RuntimeError(
                     f"{self.__log_prefix()} failed in post nccl group_id to controller after retries {e}."
@@ -544,7 +559,7 @@ class HighAvailabilitylNccl:
             try:
                 r = make_request_with_retry(
                     partial(
-                        requests.post,
+                        _post_with_check_queue,
                         json={
                             "unique_pair_name": self.__get_mesh_unique_key(
                                 cmd.replica_name_to_rank
@@ -554,6 +569,9 @@ class HighAvailabilitylNccl:
                     self.__get_alternative_urls(COSMOS_API_NCCL_COMM_ACCEPTOR_SUFFIX),
                     max_retries=constant.COSMOS_HTTP_LONG_WAIT_MAX_RETRY,
                 )
+            except FakeException:
+                # interrupt request immediately, and execute the next cmd
+                return
             except Exception as e:
                 raise RuntimeError(
                     f"{self.__log_prefix()} failed in query nccl group_id from controller after retries {e}."
@@ -608,18 +626,15 @@ class HighAvailabilitylNccl:
                 max_retries=constant.COSMOS_HTTP_RETRY_CONFIG.max_retries,
             )
 
-    def __broadcast_cmd(self) -> BuildMeshCommand | None:
+    def __broadcast_cmd(
+        self, cmd: BuildMeshCommand | None = None
+    ) -> BuildMeshCommand | None:
         """
         Let all ranks in this replica have the same cmd
 
         Returns:
             cmd: the cmd to buildmesh, or None if no cmd to buildmesh.
         """
-        # check queue to get cmd to buildmesh, if cmd queue is empty, return immediately.
-        cmd = None
-        if self.global_rank == 0 and not self.cmd_queue.empty():
-            cmd = self.cmd_queue.get()
-
         # Avoid default group no init before init_distributed
         if self.replica_group is None:
             self.replica_group = dist.distributed_c10d._get_default_group()
@@ -638,18 +653,21 @@ class HighAvailabilitylNccl:
     def _try_create_nccl_comm(self):
         """
         Use a greedy algorithm to create nccl comm.
-        We will execute every buildmesh command in order, and return until there is no newer buildmesh command.
-
+        We will only execute latest buildmesh command, and return until there is no newer buildmesh command.
+        There are two situations that will trigger a buildmesh command:
             - During register replica, controller will trigger a buildmesh command.
             - Replica nccl timeout will also trigger a buildmesh command, which can be detected by this Object.
-
-        Know issue:
-            - If some replicas exit before buildmesh command is executed, this function will block for a lang time.
         """
 
         # rank0 will run out of cmd, until comm is ready.
         while True:
-            cmd = self.__broadcast_cmd()
+            cmd = None
+            if self.global_rank == 0:
+                # get the latest cmd
+                while not self.cmd_queue.empty():
+                    cmd = self.cmd_queue.get()
+
+            cmd = self.__broadcast_cmd(cmd)
             if cmd is None:
                 if self.is_comm_ready.is_set():
                     break
