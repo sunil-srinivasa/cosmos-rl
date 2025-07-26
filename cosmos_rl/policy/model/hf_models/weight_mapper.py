@@ -24,10 +24,24 @@ from transformers import AutoConfig
 class HFModelWeightMapper(WeightMapper):
     def __init__(self, hf_config: AutoConfig):
         super().__init__(hf_config)
-        self.kv_head_ratio = (
-            self.config.num_attention_heads // self.config.num_key_value_heads
-        )
-        self.head_dim = self.config.hidden_size // self.config.num_attention_heads
+        self.kv_head_ratio = 1
+        self.head_dim = 1
+        if getattr(self.config, "num_key_value_heads", None) is not None:
+            self.kv_head_ratio = (
+                self.config.num_attention_heads // self.config.num_key_value_heads
+            )
+            self.head_dim = self.config.hidden_size // self.config.num_attention_heads
+        elif getattr(self.config, "text_config", None) is not None:
+            # VLM models like Gemma3-12b-it has num_attention_heads in text_config
+            text_config = self.config.text_config
+            self.kv_head_ratio = (
+                text_config.num_attention_heads // text_config.num_key_value_heads
+            )
+            self.head_dim = text_config.hidden_size // text_config.num_attention_heads
+        else:
+            raise ValueError(
+                f"Can not determine kv_head_ratio and head_dim from config: {self.config}"
+            )
         self.is_vlm = getattr(self.config, "vision_config", None) is not None
 
     def _rollout_vllm_name_to_hf(self, rollout_weight_name: str) -> str:

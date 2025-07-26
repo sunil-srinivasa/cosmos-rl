@@ -61,39 +61,6 @@ def parallelize(
     if config.train.compile:
         apply_compile(model)
 
-    reshard_after_forward_policy = config.train.fsdp_reshard_after_forward
-
-    if model.vision_model is not None and parallel_dims.dp_shard_enabled:
-        logger.info("Applying FSDP to the visual model")
-        mp_policy = MixedPrecisionPolicy(
-            param_dtype=str2torch_dtype(config.train.param_dtype),
-            reduce_dtype=str2torch_dtype(config.train.fsdp_reduce_dtype),
-        )
-        fsdp_config = {"mesh": world_mesh["dp_cp_tp"], "mp_policy": mp_policy}
-        if config.train.fsdp_offload:
-            fsdp_config["offload_policy"] = CPUOffloadPolicy()
-        # TODO: support emperically
-        for layer_id, transformer_block in enumerate(model.vision_layers):
-            if reshard_after_forward_policy == "always":
-                reshard_after_forward = True
-            elif reshard_after_forward_policy == "never":
-                reshard_after_forward = False
-            elif reshard_after_forward_policy == "default":
-                reshard_after_forward = int(layer_id) < model.n_vision_layers - 1
-            else:
-                raise ValueError(
-                    f"Invalid reshard_after_forward_policy: {reshard_after_forward_policy}."
-                )
-            fully_shard(
-                transformer_block,
-                **fsdp_config,
-                reshard_after_forward=reshard_after_forward,
-            )
-        fully_shard(
-            model.vision_model,
-            **fsdp_config,
-            reshard_after_forward=True,
-        )
     # apply FSDP or HSDP
     if parallel_dims.dp_shard_enabled:
         if parallel_dims.dp_replicate_enabled:
@@ -235,7 +202,41 @@ def apply_fsdp(
     fsdp_config = {"mesh": dp_mesh, "mp_policy": mp_policy}
     if cpu_offload:
         fsdp_config["offload_policy"] = CPUOffloadPolicy()
+    # Shard the vision model
+    if model.vision_model is not None:
+        logger.info("Applying FSDP to the visual model")
+        for layer_id, transformer_block in enumerate(model.vision_layers):
+            if reshard_after_forward_policy == "always":
+                reshard_after_forward = True
+            elif reshard_after_forward_policy == "never":
+                reshard_after_forward = False
+            elif reshard_after_forward_policy == "default":
+                reshard_after_forward = int(layer_id) < model.n_vision_layers - 1
+            else:
+                raise ValueError(
+                    f"Invalid reshard_after_forward_policy: {reshard_after_forward_policy}."
+                )
+            fully_shard(
+                transformer_block,
+                **fsdp_config,
+                reshard_after_forward=reshard_after_forward,
+            )
 
+        fully_shard(
+            model.vision_model,
+            **fsdp_config,
+            reshard_after_forward=True,
+        )
+
+    # Shard the multi-modal projector
+    if model.multi_modal_projector is not None:
+        fully_shard(
+            model.multi_modal_projector,
+            **fsdp_config,
+            reshard_after_forward=True,
+        )
+
+    # Shard the language model
     for layer_id, transformer_block in enumerate(model.lm_layers):
         if reshard_after_forward_policy == "always":
             reshard_after_forward = True
@@ -252,10 +253,11 @@ def apply_fsdp(
             **fsdp_config,
             reshard_after_forward=reshard_after_forward,
         )
-    # if model.language_model.model.embed_tokens is not None:
-    #     logger.info("Applying FSDP to the language model embed_tokens")
-    #     fully_shard(model.language_model.model.embed_tokens, **fsdp_config, reshard_after_forward=True)
-    fully_shard(model, **fsdp_config, reshard_after_forward=not pp_enabled)
+    if model.embed_tokens is not None:
+        logger.info("Applying FSDP to the language model embed_tokens")
+        fully_shard(model.embed_tokens, **fsdp_config, reshard_after_forward=True)
+    fully_shard(model.language_model, **fsdp_config, reshard_after_forward=True)
+    fully_shard(model, **fsdp_config, reshard_after_forward=True)
 
 
 def apply_ddp(

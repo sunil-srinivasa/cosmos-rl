@@ -6,7 +6,6 @@ from cosmos_rl.utils.util import retry
 from cosmos_rl.policy.config import Config
 from transformers import AutoTokenizer, AutoProcessor, AutoConfig
 from qwen_vl_utils import process_vision_info
-import logging
 
 IGNORE_LABEL_ID = -100
 
@@ -31,20 +30,29 @@ class HFVLMDataPacker(DataPacker):
         self.hf_processor = retry(AutoProcessor.from_pretrained)(
             config.policy.model_name_or_path
         )
-        # disable qwen_vl_utils logger
-        qwen_vl_utils_logger = logging.getLogger("qwen_vl_utils")
-        qwen_vl_utils_logger.setLevel(logging.WARNING)
-        qwen_vl_utils_logger.propagate = False
 
         hf_config = retry(AutoConfig.from_pretrained)(config.policy.model_name_or_path)
-        if hasattr(hf_config, "image_token_id"):
-            self.image_token_id = hf_config.image_token_id
-        else:
-            self.image_token = None
-            self.image_token_id = None
-        if hasattr(hf_config, "video_token_id"):
-            self.video_token_id = hf_config.video_token_id
-        else:
+
+        image_token_id = getattr(hf_config, "image_token_id", None) or getattr(
+            hf_config.vision_config, "image_token_id", None
+        )
+        if image_token_id is None:
+            image_token_id = getattr(hf_config, "image_token_index", None) or getattr(
+                hf_config.vision_config, "image_token_index", None
+            )
+
+        self.image_token_id = image_token_id
+        # if image_token_id is None:
+        #     self.image_token = None
+
+        video_token_id = getattr(hf_config, "video_token_id", None) or getattr(
+            hf_config.vision_config, "video_token_id", None
+        )
+        if video_token_id is None:
+            video_token_id = getattr(hf_config, "video_token_index", None) or getattr(
+                hf_config.vision_config, "video_token_index", None
+            )
+        if video_token_id is None:
             self.video_token = None
             self.video_token_id = None
         self.vision_ids = [self.image_token_id, self.video_token_id]
@@ -152,25 +160,49 @@ class HFVLMDataPacker(DataPacker):
             eos_token_id = self.tokenizer.eos_token_id
             pad_run_length = 10
             assistant_content = []
-            for message in conversation:
+            messages = conversation["messages"]
+            for message in messages:
                 if message["role"] == "assistant":
-                    assistant_content.append(message["content"])
-                    message["content"] = pad_token * pad_run_length
+                    content = message["content"]
+                    new_content = content.copy()
+                    if isinstance(new_content, str):
+                        assistant_content.append(new_content)
+                        new_content = pad_token * pad_run_length
+                    elif isinstance(new_content, dict):
+                        assert "text" in new_content, f"text not in content: {content}"
+                        assistant_content.append(new_content["text"])
+                        new_content["text"] = pad_token * pad_run_length
+                    elif isinstance(content, list):
+                        for i, item in enumerate(content):
+                            if isinstance(item, dict):
+                                assert "text" in item, f"text not in content: {item}"
+                                assistant_content.append(item["text"])
+                                new_content[i]["text"] = pad_token * pad_run_length
+                            else:
+                                raise ValueError(
+                                    f"Unsupported content type: {type(item)}"
+                                )
+                    else:
+                        raise ValueError(f"Unsupported content type: {type(content)}")
+                    message["content"] = new_content
 
-            prompt = self.hf_processor.apply_chat_template(
-                conversation,
+            text = self.hf_processor.apply_chat_template(
+                messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
-            image_inputs, video_inputs = process_vision_info(conversation)
-            inputs = self.hf_processor(
-                text=[prompt],
-                images=image_inputs,
-                videos=video_inputs,
-                padding=True,
-                return_tensors="pt",
-            )
+            images = conversation["images"]
+            # image_inputs, video_inputs = process_vision_info(conversation)
+            kwarg = {
+                "padding": True,
+                "return_tensors": "pt",
+                "images": [images],
+            }
 
+            inputs = self.hf_processor(
+                text=[text],
+                **kwarg,
+            )
             input_ids = inputs["input_ids"][0].tolist()
             label_ids = [IGNORE_LABEL_ID] * len(input_ids)
 
@@ -178,6 +210,7 @@ class HFVLMDataPacker(DataPacker):
                 replacement_ids = self.tokenizer.encode(
                     assistant_content, add_special_tokens=False
                 )
+
                 replaced, input_ids, label_ids = self._replace_assistant_content(
                     input_ids,
                     label_ids,
@@ -202,7 +235,10 @@ class HFVLMDataPacker(DataPacker):
         }
         if "pixel_values_videos" in inputs:
             result_dict["pixel_values_videos"] = inputs["pixel_values_videos"]
-            result_dict["video_grid_thw"] = inputs["video_grid_thw"]
+            if "video_grid_thw" in inputs:
+                result_dict["video_grid_thw"] = inputs["video_grid_thw"]
+            else:
+                result_dict["video_grid_thw"] = None
             result_dict["second_per_grid_ts"] = torch.tensor(
                 inputs["second_per_grid_ts"], dtype=torch.float
             )
@@ -210,13 +246,15 @@ class HFVLMDataPacker(DataPacker):
                 "pixel_values_videos"
             ].shape[0]
 
-        if "pixel_values_images" in inputs:
-            result_dict["pixel_values_images"] = inputs["pixel_values_images"]
-            result_dict["image_grid_thw"] = inputs["image_grid_thw"]
-            result_dict["pixel_values_images_lengths_per_sample"] = inputs[
-                "pixel_values_images"
+        if "pixel_values" in inputs:
+            result_dict["pixel_values"] = inputs["pixel_values"]
+            if "image_grid_thw" in inputs:
+                result_dict["image_grid_thw"] = inputs["image_grid_thw"]
+            else:
+                result_dict["image_grid_thw"] = None
+            result_dict["pixel_values_lengths_per_sample"] = inputs[
+                "pixel_values"
             ].shape[0]
-
         return result_dict
 
     def _collate_fn(
@@ -346,9 +384,9 @@ class HFVLMDataPacker(DataPacker):
         rollout_output: Optional[str] = None,
         n_ignore_prefix_tokens: int = 0,
     ) -> Any:
-        assert all(
-            isinstance(x, dict) and "role" in x and "content" in x for x in sample
-        ), "All samples should be in conversation format, but got: {}".format(sample)
+        # assert all(
+        #     isinstance(x, dict) and "role" in x and "content" in x for x in sample
+        # ), "All samples should be in conversation format, but got: {}".format(sample)
 
         x = self._process_single_sample(sample)
 
