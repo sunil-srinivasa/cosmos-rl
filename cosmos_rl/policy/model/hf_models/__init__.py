@@ -103,7 +103,7 @@ class HFModel(BaseModel):
         out = self.model(
             input_ids,
             position_ids=position_ids,
-            attention_mask=None,
+            # attention_mask=None,
             past_key_values=None,
             use_cache=False,
             *args,
@@ -308,6 +308,24 @@ class HFModel(BaseModel):
                         self.vision_config, device=current_device
                     )
                     rotary_emb.register_buffer("inv_freq", inv_freq, persistent=False)
+            # CLIPVisionTransformer
+            embeddings = safe_deep_getattr(
+                vision_model, "vision_model.embeddings", None
+            )
+            # assert embeddings is not None, f"Can not get embeddings from {vision_model}"
+            if (
+                embeddings is not None
+                and getattr(embeddings, "position_ids", None) is not None
+                and getattr(embeddings, "num_positions", None) is not None
+            ):
+                position_ids = (
+                    torch.arange(embeddings.num_positions)
+                    .expand((1, -1))
+                    .to(current_device)
+                )
+                embeddings.register_buffer(
+                    "position_ids", position_ids, persistent=False
+                )
 
     @property
     def parallelize_fn(self):
