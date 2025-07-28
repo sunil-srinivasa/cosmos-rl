@@ -527,6 +527,7 @@ class ParallelismConfig(BaseModel):
     )
     tp_size: int = Field(default=2, description="Tensor parallelism size")
     cp_size: int = Field(default=1, description="Context parallelism size")
+    ep_size: int = Field(default=1, description="Expert parallelism size")
     dp_shard_size: int = Field(
         default=-1, description="Data Parallelism size in sharded mode"
     )
@@ -576,6 +577,7 @@ class PolicyConfig(BaseModel):
             self.model_name_or_path is not None and self.model_name_or_path != ""
         ), "model_name_or_path is required"
         assert self.parallelism.tp_size > 0, "tp_size must be greater than 0"
+        assert self.parallelism.ep_size > 0, "ep_size must be greater than 0"
         assert self.parallelism.cp_size > 0, "cp_size must be greater than 0"
         assert self.parallelism.pp_size > 0, "pp_size must be greater than 0"
         assert (
@@ -734,6 +736,9 @@ class LoggingConfig(BaseModel):
 
 
 class Config(BaseModel):
+    custom: Dict[str, Any] = Field(
+        default_factory=dict, description="Custom script configuration."
+    )
     train: TrainingConfig = Field(default_factory=TrainingConfig)
     rollout: RolloutConfig = Field(default_factory=RolloutConfig)
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
