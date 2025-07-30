@@ -133,8 +133,12 @@ API for replica-controller communication
 async def get_status():
     return {
         "mesh_names": MESH_NAMES,
-        "policy_replicas": _serialize_replicas(controller.policy_replicas),
-        "rollout_replicas": _serialize_replicas(controller.rollout_replicas),
+        "policy_replicas": _serialize_replicas(
+            controller.policy_status_manager.policy_replicas
+        ),
+        "rollout_replicas": _serialize_replicas(
+            controller.rollout_status_manager.rollout_replicas
+        ),
     }
 
 
