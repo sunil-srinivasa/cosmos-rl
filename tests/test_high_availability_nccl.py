@@ -274,7 +274,7 @@ class TestHANccl(CommMixin):
                 comm.world_size() == dist.get_world_size()
             ), f"world size should be {dist.get_world_size()}"
 
-        comm.fault_tolerant_runner(op_helper)
+        comm.fault_tolerant_run(op_helper)
         comm.destroy_nccl_comm()
         logger.info(f"  === normal case, passed {self.replica_name}")
 
@@ -316,8 +316,7 @@ class TestHANccl(CommMixin):
                 # wait until controller trigger the buildmesh command
                 self.fetch_command(block=False, comm=comm)
 
-            # 如果一开始，有节点就没执行 buildmesh cmd，那么会导致部分节点无法消耗 cmd
-            comm.fault_tolerant_runner(op_helper)
+            comm.fault_tolerant_run(op_helper)
 
         comm.destroy_nccl_comm()
         logger.info(f"  === intiative scale down, passed {self.replica_name}")
@@ -393,7 +392,7 @@ class TestHANccl(CommMixin):
             )
             comm.push_cmd(cmd)
 
-            comm.fault_tolerant_runner(op_helper)
+            comm.fault_tolerant_run(op_helper)
 
         # finally, shutdown the comm
         comm.destroy_nccl_comm()

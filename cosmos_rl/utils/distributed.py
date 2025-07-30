@@ -132,72 +132,76 @@ def gradient_reduce_across_dp_replicas_(
         comm_idx (int): The nccl communicator id for the reduction.
     """
 
-    grads = [p.grad for p in parameters if p.grad is not None]
+    def _reduce_grads_helper():
+        grads = [p.grad for p in parameters if p.grad is not None]
 
-    # We only need to reduce DTensor's local grad, this is to avoid tensor.grad == nullptr
-    for i, g in enumerate(grads):
-        if isinstance(g, DTensor):
-            grads[i] = g.to_local()
+        # We only need to reduce DTensor's local grad, this is to avoid tensor.grad == nullptr
+        for i, g in enumerate(grads):
+            if isinstance(g, DTensor):
+                grads[i] = g.to_local()
 
-    # create bucket for all grads, we can allreduce them in one go
-    # NOTE: why we don't set DTensor as bucket view?
-    # This is becuase we can't be sure that the training framework
-    # never release grad, or clean grad by set None.
-    # Create temporary bucket is a more reliable solution.
-    buckets: dict[torch.dtype, list[torch.Tensor]] = {}
-    for g in grads:
-        if g.dtype not in buckets:
-            buckets[g.dtype] = []
-        buckets[g.dtype].append(g.flatten())
+        # create bucket for all grads, we can allreduce them in one go
+        # NOTE: why we don't set DTensor as bucket view?
+        # This is becuase we can't be sure that the training framework
+        # never release grad, or clean grad by set None.
+        # Create temporary bucket is a more reliable solution.
+        buckets: dict[torch.dtype, list[torch.Tensor]] = {}
+        for g in grads:
+            if g.dtype not in buckets:
+                buckets[g.dtype] = []
+            buckets[g.dtype].append(g.flatten())
 
-    # move all grad into one bucket
-    for bucket in buckets.values():
-        BUCKET_SIZE = 200 * 1024 * 1024
-        sub_buckets = []
-        current_bucket = []
-        current_size = 0
-        for tensor in bucket:
-            n_bytes = tensor.numel() * tensor.element_size()
-            if current_size + n_bytes > BUCKET_SIZE:
+        # move all grad into one bucket
+        for bucket in buckets.values():
+            BUCKET_SIZE = 200 * 1024 * 1024
+            sub_buckets = []
+            current_bucket = []
+            current_size = 0
+            for tensor in bucket:
+                n_bytes = tensor.numel() * tensor.element_size()
+                if current_size + n_bytes > BUCKET_SIZE:
+                    current_bucket.append(tensor)
+                    sub_buckets.append(current_bucket)
+                    current_bucket = []
+                    current_size = 0
+                    continue
                 current_bucket.append(tensor)
+                current_size += n_bytes
+            if current_size > 0:
                 sub_buckets.append(current_bucket)
-                current_bucket = []
-                current_size = 0
-                continue
-            current_bucket.append(tensor)
-            current_size += n_bytes
-        if current_size > 0:
-            sub_buckets.append(current_bucket)
-        del current_bucket
-        del current_size
+            del current_bucket
+            del current_size
 
-        for sub_bucket in sub_buckets:
-            tmp_buffer = torch.cat(sub_bucket, dim=0).contiguous()
-            # Convert to float32 to keep precision
-            original_dtype = tmp_buffer.dtype
-            tmp_buffer = tmp_buffer.float()
+            for sub_bucket in sub_buckets:
+                tmp_buffer = torch.cat(sub_bucket, dim=0).contiguous()
+                # Convert to float32 to keep precision
+                original_dtype = tmp_buffer.dtype
+                tmp_buffer = tmp_buffer.float()
 
-            # TODO a risk here, when comm is rebuilt, the reduce result will be wrong.
-            # For the first time to build mesh, we set a longer timeout (30 minutes) to avoid lost some slower replicas
-            timeout_ms = get_nccl_timeout_ms()
-            if gradient_reduce_across_dp_replicas_.first_invoke:
-                timeout_ms = 30 * 60 * 1000
-                gradient_reduce_across_dp_replicas_.first_invoke = False
+                # TODO a risk here, when comm is rebuilt, the reduce result will be wrong.
+                # For the first time to build mesh, we set a longer timeout (30 minutes) to avoid lost some slower replicas
+                timeout_ms = get_nccl_timeout_ms()
+                if gradient_reduce_across_dp_replicas_.first_invoke:
+                    timeout_ms = 30 * 60 * 1000
+                    gradient_reduce_across_dp_replicas_.first_invoke = False
 
-            comm.allreduce(
-                tmp_buffer, tmp_buffer, dist.ReduceOp.AVG, timeout_ms=timeout_ms
-            )
-            tmp_buffer = tmp_buffer.to(original_dtype)
+                comm.allreduce(
+                    tmp_buffer, tmp_buffer, dist.ReduceOp.AVG, timeout_ms=timeout_ms
+                )
+                tmp_buffer = tmp_buffer.to(original_dtype)
 
-            # copy the result back to original grad
-            offset = 0
-            for g in sub_bucket:
-                size = g.numel()
-                g.copy_(tmp_buffer[offset : offset + size].view_as(g))
-                offset += size
-                assert (
-                    offset <= tmp_buffer.numel()
-                ), "offset should be equal to total size"
+                # copy the result back to original grad
+                offset = 0
+                for g in sub_bucket:
+                    size = g.numel()
+                    g.copy_(tmp_buffer[offset : offset + size].view_as(g))
+                    offset += size
+                    assert (
+                        offset <= tmp_buffer.numel()
+                    ), "offset should be equal to total size"
+
+    # NOTE: we need to wrap the allreduce in fault tolerant runner to auto recover nccl comm failure
+    comm.fault_tolerant_run(_reduce_grads_helper)
 
 
 gradient_reduce_across_dp_replicas_.first_invoke = True
@@ -652,7 +656,7 @@ class HighAvailabilitylNccl:
 
     def _try_create_nccl_comm(self):
         """
-        Use a greedy algorithm to create nccl comm.
+        Use a greedy algorithm to create nccl comm, this should be non-blocking.
         We will only execute latest buildmesh command, and return until there is no newer buildmesh command.
         There are two situations that will trigger a buildmesh command:
             - During register replica, controller will trigger a buildmesh command.
@@ -695,16 +699,16 @@ class HighAvailabilitylNccl:
                 **kwargs,
             )
 
-    def fault_tolerant_runner(self, func: Callable, *args, **kwargs):
+    def fault_tolerant_run(self, func: Callable, *args, **kwargs):
         """
-        Fault tolerant runner for nccl op. All nccl op must be invoked by this runner, so that failure tolerance can work.
+        Fault tolerant run for nccl op. All nccl op must be invoked by this runner, so that failure tolerance can work.
 
         Known issues:
             - invoke gloo op in `func` will cause nccl op hang
             - nranks change will make tensors allreduce in different nccl group.
 
         Args:
-            func: the function include nccl op to be invoked.
+            func: the function include nccl op to be invoked. (this function will be invoked in a loop, so it should be idempotence and non-blocking).
             *args: the args to be passed to the function.
             **kwargs: the kwargs to be passed to the function.
 

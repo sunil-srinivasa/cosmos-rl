@@ -470,81 +470,90 @@ class GRPOTrainer(Trainer):
             model_state_dict.append(self.reference_state_dict)
 
         # 1. Sync all model states
-        for state_to_sync in model_state_dict:
-            for dest_name in sorted(state_to_sync.keys()):
-                obj = state_to_sync[dest_name]
-                assert isinstance(obj, torch.Tensor)
-                local_view = self.wrap_to_cuda_tensor(
-                    dest_name, obj, in_place=obj.is_cuda
-                )
-                if is_send:
-                    send_hook(local_view)
-                else:
-                    recv_hook(local_view)
-                    if isinstance(obj, torch.distributed.tensor.DTensor):
-                        to_write = obj.to_local()
+        def _sync_all_model_states_helper():
+            for state_to_sync in model_state_dict:
+                for dest_name in sorted(state_to_sync.keys()):
+                    obj = state_to_sync[dest_name]
+                    assert isinstance(obj, torch.Tensor)
+                    local_view = self.wrap_to_cuda_tensor(
+                        dest_name, obj, in_place=obj.is_cuda
+                    )
+                    if is_send:
+                        send_hook(local_view)
                     else:
-                        to_write = obj
+                        recv_hook(local_view)
+                        if isinstance(obj, torch.distributed.tensor.DTensor):
+                            to_write = obj.to_local()
+                        else:
+                            to_write = obj
 
-                    # Copy again for offloaded tensor since it is not inplace received
-                    if not to_write.is_cuda:
-                        to_write.copy_(local_view)
-                len_params += 1
+                        # Copy again for offloaded tensor since it is not inplace received
+                        if not to_write.is_cuda:
+                            to_write.copy_(local_view)
+                        len_params += 1
+        self.inter_policy_nccl.fault_tolerant_run(_sync_all_model_states_helper)
 
         # 2. Sync optimizer states
         optimizer_state = self.optimizers.state_dict()
-        for dest_name in sorted(optimizer_state.keys()):
-            obj = optimizer_state[dest_name]
-            local_view = self.wrap_to_cuda_tensor(dest_name, obj)
-            if local_view.data_ptr() is None:
-                # skip the optimizer state if the data pointer is None
-                continue
-            if is_send:
-                # nccl send
-                send_hook(local_view)
-            else:
-                # nccl recv
-                recv_hook(local_view)
-                optimizer_state[dest_name] = self.extract_from_cuda_tensor(
-                    dest_name, obj, local_view
-                )
-            len_params += 1
+
+        def _sync_all_optimizer_states_helper():
+            for dest_name in sorted(optimizer_state.keys()):
+                obj = optimizer_state[dest_name]
+                local_view = self.wrap_to_cuda_tensor(dest_name, obj)
+                if local_view.data_ptr() is None:
+                    # skip the optimizer state if the data pointer is None
+                    continue
+                if is_send:
+                    # nccl send
+                    send_hook(local_view)
+                else:
+                    # nccl recv
+                    recv_hook(local_view)
+                    optimizer_state[dest_name] = self.extract_from_cuda_tensor(
+                        dest_name, obj, local_view
+                    )
+                len_params += 1
+        self.inter_policy_nccl.fault_tolerant_run(_sync_all_optimizer_states_helper)
         if not is_send:
             self.optimizers.load_state_dict(optimizer_state)
 
         # 3. Sync lr_scheduler states
         lr_sheduler_state = self.lr_schedulers.state_dict()
-        for dest_name in sorted(lr_sheduler_state.keys()):
-            obj = lr_sheduler_state[dest_name]
-            local_view = self.wrap_to_cuda_tensor(dest_name, obj)
-            if is_send:
-                # nccl send
-                send_hook(local_view)
-            else:
-                # nccl recv
-                recv_hook(local_view)
-                lr_sheduler_state[dest_name] = self.extract_from_cuda_tensor(
-                    dest_name, obj, local_view
-                )
-            len_params += 1
+        def _sync_all_lr_scheduler_states_helper():
+            for dest_name in sorted(lr_sheduler_state.keys()):
+                obj = lr_sheduler_state[dest_name]
+                local_view = self.wrap_to_cuda_tensor(dest_name, obj)
+                if is_send:
+                    # nccl send
+                    send_hook(local_view)
+                else:
+                    # nccl recv
+                    recv_hook(local_view)
+                    lr_sheduler_state[dest_name] = self.extract_from_cuda_tensor(
+                        dest_name, obj, local_view
+                    )
+                len_params += 1
+        self.inter_policy_nccl.fault_tolerant_run(_sync_all_lr_scheduler_states_helper)
         if not is_send:
             self.lr_schedulers.load_state_dict(lr_sheduler_state)
 
         # 4. Sync rng_state
         rng_state = self.ckpt_manager.get_rng_state()
-        for dest_name in sorted(rng_state.keys()):
-            obj = rng_state[dest_name]
-            local_view = self.wrap_to_cuda_tensor(dest_name, obj)
-            if is_send:
-                # nccl send
-                send_hook(local_view)
-            else:
-                # nccl recv
-                recv_hook(local_view)
-                rng_state[dest_name] = self.extract_from_cuda_tensor(
-                    dest_name, obj, local_view
-                )
-            len_params += 1
+        def _sync_rng_state_helper():
+            for dest_name in sorted(rng_state.keys()):
+                obj = rng_state[dest_name]
+                local_view = self.wrap_to_cuda_tensor(dest_name, obj)
+                if is_send:
+                    # nccl send
+                    send_hook(local_view)
+                else:
+                    # nccl recv
+                    recv_hook(local_view)
+                    rng_state[dest_name] = self.extract_from_cuda_tensor(
+                        dest_name, obj, local_view
+                    )
+                len_params += 1
+        self.inter_policy_nccl.fault_tolerant_run(_sync_rng_state_helper)
         if not is_send:
             self.ckpt_manager.set_rng_state(rng_state)
         return len_params
