@@ -249,7 +249,6 @@ def gradient_norm_clipping(
             else:
                 device_mesh_str = "default"
             parameters_by_mesh[device_mesh_str].append(param)
-
     # Compute the norm for each mesh group
     per_mesh_norm_list = []
     for mesh, params in parameters_by_mesh.items():

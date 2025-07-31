@@ -59,7 +59,7 @@ from functools import partial
 import msgpack
 from cosmos_rl.utils.network_util import make_request_with_retry
 from cosmos_rl.utils.ulysses import slice_inputs_for_ulysses
-from cosmos_rl.utils.util import is_master_rank
+from cosmos_rl.utils.util import is_master_rank, str2torch_dtype
 from cosmos_rl.utils import constant
 from cosmos_rl.utils.distributed import HighAvailabilitylNccl
 from cosmos_rl.dispatcher.replica import Rollout
@@ -774,7 +774,9 @@ class GRPOTrainer(Trainer):
                                 local_view = local_view()
                             else:
                                 pass
-
+                            local_view = local_view.to(
+                                str2torch_dtype(self.config.train.param_dtype)
+                            )
                             view = (
                                 local_view.cosmos_slice(tensor_split_strategys)
                                 .contiguous()
@@ -899,39 +901,39 @@ class GRPOTrainer(Trainer):
         """
         # Add nccl allreduce operations for all parameters and necessary states.
         """
-        for model_part in self.model_parts:
-            # Model part may use same physical mesh for different logical mesh,
-            # which is not supported by DTensor operands like `torch.nn.utils.get_total_norm`
-            # So we need to do allreduce for each model part
-            if model_part is not None:
-                dist_util.gradient_reduce_across_dp_replicas_(
-                    [p for p in model_part.parameters()], self.inter_policy_nccl
+        with torch.cuda.stream(self.train_stream):
+            for model_part in self.model_parts:
+                # Model part may use same physical mesh for different logical mesh,
+                # which is not supported by DTensor operands like `torch.nn.utils.get_total_norm`
+                # So we need to do allreduce for each model part
+                if model_part is not None:
+                    dist_util.gradient_reduce_across_dp_replicas_(
+                        [p for p in model_part.parameters()], self.inter_policy_nccl
+                    )
+
+            """
+            Compute the global grad norm on all parameters and then apply
+            gradient clipping using the global grad norm.
+            """
+            if self.config.train.optm_grad_norm_clip > 0:
+                # Must pass empty list even if model_part is None,
+                # GradNorm across pp stages will fail if some rank does not join the barrier
+                all_params = [
+                    p
+                    for m in [model for model in self.model_parts if model is not None]
+                    for p in m.parameters()
+                ]
+                dist_util.gradient_norm_clipping(
+                    all_params,
+                    self.config.train.optm_grad_norm_clip,
+                    foreach=True,
+                    pp_mesh=self.parallel_dims.mesh["pp"]
+                    if self.parallel_dims.pp_enabled
+                    else None,
                 )
-
-        """
-        Compute the global grad norm on all parameters and then apply
-        gradient clipping using the global grad norm.
-        """
-        if self.config.train.optm_grad_norm_clip > 0:
-            # Must pass empty list even if model_part is None,
-            # GradNorm across pp stages will fail if some rank does not join the barrier
-            all_params = [
-                p
-                for m in [model for model in self.model_parts if model is not None]
-                for p in m.parameters()
-            ]
-            dist_util.gradient_norm_clipping(
-                all_params,
-                self.config.train.optm_grad_norm_clip,
-                foreach=True,
-                pp_mesh=self.parallel_dims.mesh["pp"]
-                if self.parallel_dims.pp_enabled
-                else None,
-            )
-
-        self.optimizers.step()
-        self.lr_schedulers.step()
-        self.optimizers.zero_grad()
+            self.optimizers.step()
+            self.lr_schedulers.step()
+            self.optimizers.zero_grad()
         return True
 
     async def fetch_command(self):
@@ -1113,6 +1115,7 @@ class GRPOTrainer(Trainer):
             minibatch["input_ids"], minibatch["logprob_masks"], full_logits
         )
 
+    @torch.no_grad()
     def _swap_model_state_dict(self):
         kl_beta = self.config.train.train_policy.kl_beta
         if kl_beta != 0.0:
@@ -1470,7 +1473,9 @@ class GRPOTrainer(Trainer):
                                     kl_loss_sum += kl_loss.item()
                             self.mini_step += 1
                             local_mini_step += 1
-                        self.execute_all_reduce()
+
+                        if not is_computing_ref:
+                            self.execute_all_reduce()
         self.old_per_token_logps = []
         self.ref_per_token_logps = []
         end_event.record()
@@ -1546,6 +1551,7 @@ class GRPOTrainer(Trainer):
                     ),
                     trainable_only=False,
                     is_final=current_step == total_steps,
+                    dtype=str2torch_dtype(self.config.train.param_dtype),
                 )
             logger.info(f"[Policy] Saving cosmos checkpoint at step {current_step}...")
             self.ckpt_manager.save_checkpoint(
