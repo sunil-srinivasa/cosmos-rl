@@ -24,6 +24,7 @@ from cosmos_rl.utils.util import (
     retry,
     safe_deep_getattr,
     load_model_class_by_config,
+    reverse_hf_checkpoint_mapping,
 )
 from cosmos_rl.utils.constant import COSMOS_HF_MODEL_TYPES
 from cosmos_rl.policy.model.base import BaseModel, ModelRegistry
@@ -59,6 +60,14 @@ class HFModel(BaseModel):
         self.model = model
         self.model_class = model_class
         self.is_vlm = is_vlm
+        if getattr(model, "_checkpoint_conversion_mapping", None):
+            # reverse the hf checkpoint conversion mapping to aligh with the vllm weights' name
+            self.weight_mapper.reverse_hf_conversion_mapping = (
+                reverse_hf_checkpoint_mapping(model._checkpoint_conversion_mapping)
+            )
+            logger.info(
+                f"reverse_hf_conversion_mapping={self.weight_mapper.reverse_hf_conversion_mapping}"
+            )
 
     @cached_property
     def model_forward_valid_kwargs(self):

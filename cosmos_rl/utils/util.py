@@ -1078,3 +1078,10 @@ def load_model_class_by_config(hf_config):
         logger.error(f"Can not load {class_name} from transformers")
         raise e
     return model_class
+
+
+def reverse_hf_checkpoint_mapping(mapping):
+    reverse_map = {}
+    for k, v in mapping.items():
+        reverse_map[r"^" + re.escape(v)] = k.lstrip("^")
+    return reverse_map

@@ -267,6 +267,14 @@ class GrpoConfig(BaseModel):
         default="",
         description="Column name for response/reference answer",
     )
+    image_column_name: str = Field(
+        default="",
+        description="Column name for image",
+    )
+    video_column_name: str = Field(
+        default="",
+        description="Column name for video",
+    )
     reward_function: Union[str, List[str], Dict[str, float]] = Field(
         default_factory=lambda: ["single_choice"],
         description="Reward functions for the model. Currently support `single_choice`, `boxed_math`, and `format`. You can add weight to each reward function by passing a dict, e.g., {'single_choice': 0.9, 'format': 0.1}",

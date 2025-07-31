@@ -43,6 +43,7 @@ class HFModelWeightMapper(WeightMapper):
                 f"Can not determine kv_head_ratio and head_dim from config: {self.config}"
             )
         self.is_vlm = getattr(self.config, "vision_config", None) is not None
+        self.reverse_hf_conversion_mapping = None
 
     def _rollout_vllm_name_to_hf(self, rollout_weight_name: str) -> str:
         # Happen to be the same as policy name mapping.
@@ -143,10 +144,15 @@ class HFModelWeightMapper(WeightMapper):
     def policy_map_local_key_to_hf_key(self, name: str) -> str:
         name = util.clear_weight_name(name)
         if self.is_vlm:
-            if name.startswith("language_model."):
-                name = name.replace("language_model.", "")
-            if name == "model.lm_head.weight":
-                name = "lm_head.weight"
+            # Policy model is HFModel, so we need to reverse the hf checkpoint conversion mapping
+            if self.reverse_hf_conversion_mapping:
+                for pattern, replacement in self.reverse_hf_conversion_mapping.items():
+                    if re.match(pattern, name):
+                        name = re.sub(pattern, replacement, name)
+                        break
+            else:
+                # Rollout model is vllm model, so we don't need to reverse the hf checkpoint conversion mapping
+                pass
         else:
             if not name == "lm_head.weight":
                 if not name.startswith("model."):

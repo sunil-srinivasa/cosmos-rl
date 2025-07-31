@@ -107,32 +107,7 @@ class HFVLMSFTDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
-        """
-        Return a tuple of (prompt, reference answer)
-        """
         conversations = self.dataset[idx]
-        # conversations = copy.deepcopy(payload[self.conversation_column_name])
-
-        # for conv in conversations:
-        #     if conv["role"] == "user":
-        #         assert isinstance(conv["content"], str), "User message must be string"
-        #         # Rewrite to support image/video tokens
-        #         image_info = None
-        #         content = [
-        #             {
-        #                 "type": "text",
-        #                 "text": conv["content"],
-        #             },
-        #         ]
-        #         if self.has_image:
-        #             image_info = {
-        #                 "type": "image",
-        #                 "image": payload[self.image_column_name],
-        #             }
-        #             content.insert(0, image_info)
-
-        #         conv["content"] = content
-
         return conversations
 
 
