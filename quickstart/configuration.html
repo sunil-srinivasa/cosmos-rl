@@ -2383,7 +2383,7 @@
 <tr class="row-even"><td><p>default</p></td>
 <td colspan="3"><p>1</p></td>
 </tr>
-<tr class="row-odd"><td rowspan="36"><ul class="simple">
+<tr class="row-odd"><td rowspan="39"><ul class="simple">
 <li><p>ValidationConfig</p></li>
 </ul>
 </td>
@@ -2416,7 +2416,7 @@
 <tr class="row-odd"><td><p>default</p></td>
 <td colspan="3"><p>0.9</p></td>
 </tr>
-<tr class="row-even"><td rowspan="4"><ul class="simple">
+<tr class="row-even"><td rowspan="5"><ul class="simple">
 <li><p>top_p</p></li>
 </ul>
 </td>
@@ -2424,25 +2424,33 @@
 </tr>
 <tr class="row-odd"><td colspan="4"><p>Top-p for sampling during validation.</p></td>
 </tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="2"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>number</em></p></td>
+</tr>
 <tr class="row-even"><td><p>type</p></td>
-<td colspan="3"><p><em>number</em></p></td>
+<td colspan="2"><p><em>null</em></p></td>
 </tr>
-<tr class="row-odd"><td><p>default</p></td>
-<td colspan="3"><p>1.0</p></td>
-</tr>
-<tr class="row-even"><td rowspan="4"><ul class="simple">
+<tr class="row-odd"><td rowspan="5"><ul class="simple">
 <li><p>top_k</p></li>
 </ul>
 </td>
 <td colspan="4"><p><em>Top K</em></p></td>
 </tr>
-<tr class="row-odd"><td colspan="4"><p>Top-k for sampling during validation.</p></td>
-</tr>
-<tr class="row-even"><td><p>type</p></td>
-<td colspan="3"><p><em>integer</em></p></td>
+<tr class="row-even"><td colspan="4"><p>Top-k for sampling during validation.</p></td>
 </tr>
 <tr class="row-odd"><td><p>default</p></td>
-<td colspan="3"><p>10</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-even"><td rowspan="2"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>integer</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="2"><p><em>null</em></p></td>
 </tr>
 <tr class="row-even"><td rowspan="4"><ul class="simple">
 <li><p>repetition_penalty</p></li>
@@ -2472,7 +2480,7 @@
 <tr class="row-odd"><td><p>default</p></td>
 <td colspan="3"><p>1</p></td>
 </tr>
-<tr class="row-even"><td rowspan="4"><ul class="simple">
+<tr class="row-even"><td rowspan="5"><ul class="simple">
 <li><p>max_response_length</p></li>
 </ul>
 </td>
@@ -2480,35 +2488,39 @@
 </tr>
 <tr class="row-odd"><td colspan="4"><p>Max output length of rollout generation during validation.</p></td>
 </tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="2"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>integer</em></p></td>
+</tr>
 <tr class="row-even"><td><p>type</p></td>
-<td colspan="3"><p><em>integer</em></p></td>
+<td colspan="2"><p><em>null</em></p></td>
 </tr>
-<tr class="row-odd"><td><p>default</p></td>
-<td colspan="3"><p>2048</p></td>
-</tr>
-<tr class="row-even"><td rowspan="7"><ul class="simple">
+<tr class="row-odd"><td rowspan="7"><ul class="simple">
 <li><p>reward_function</p></li>
 </ul>
 </td>
 <td colspan="4"><p><em>Reward Function</em></p></td>
 </tr>
-<tr class="row-odd"><td colspan="4"><p>Reward functions for the model. Currently support <cite>single_choice</cite>, <cite>boxed_math</cite>, and <cite>format</cite>. You can add weight to each reward function by passing a dict, e.g., {‘single_choice’: 0.9, ‘format’: 0.1}</p></td>
+<tr class="row-even"><td colspan="4"><p>Reward functions for the model. Currently support <cite>single_choice</cite>, <cite>boxed_math</cite>, and <cite>format</cite>. You can add weight to each reward function by passing a dict, e.g., {‘single_choice’: 0.9, ‘format’: 0.1}</p></td>
 </tr>
-<tr class="row-even"><td rowspan="5"><p>anyOf</p></td>
+<tr class="row-odd"><td rowspan="5"><p>anyOf</p></td>
 <td><p>type</p></td>
 <td colspan="2"><p><em>string</em></p></td>
 </tr>
-<tr class="row-odd"><td><p>type</p></td>
+<tr class="row-even"><td><p>type</p></td>
 <td colspan="2"><p><em>array</em></p></td>
 </tr>
-<tr class="row-even"><td><p>items</p></td>
+<tr class="row-odd"><td><p>items</p></td>
 <td><p>type</p></td>
 <td><p><em>string</em></p></td>
 </tr>
-<tr class="row-odd"><td><p>type</p></td>
+<tr class="row-even"><td><p>type</p></td>
 <td colspan="2"><p><em>object</em></p></td>
 </tr>
-<tr class="row-even"><td><p>additionalProperties</p></td>
+<tr class="row-odd"><td><p>additionalProperties</p></td>
 <td><p>type</p></td>
 <td><p><em>number</em></p></td>
 </tr>
