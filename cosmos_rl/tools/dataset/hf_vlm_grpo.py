@@ -37,6 +37,7 @@ class HFVLMGRPODataset(Dataset):
             config.train.train_policy.dataset.name,
             config.train.train_policy.dataset.subset,
         )
+        self.system_prompt = config.train.train_policy.system_prompt
         self.prompt_column_name = config.train.train_policy.prompt_column_name
         self.response_column_name = config.train.train_policy.response_column_name
         self.image_column_name = config.train.train_policy.image_column_name
@@ -49,6 +50,7 @@ class HFVLMGRPODataset(Dataset):
         assert (
             self.has_image or self.has_video
         ), "At least one of image or video column name must be provided"
+        logger.info(f"[HFVLMGRPODataset] system_prompt: {self.system_prompt}")
 
         if config.train.train_policy.dataset.split:
             if isinstance(config.train.train_policy.dataset.split, list):
@@ -70,11 +72,12 @@ class HFVLMGRPODataset(Dataset):
         payload = self.dataset[idx]
         prompt = payload[self.prompt_column_name]
         user_prompt = prompt
-        system_prompt = "You are a mathematics expert. For each math problem presented together with an image, thoroughly interpret the visual and textual information and provide a detailed, step-by-step solution, ensuring that your reasoning is clear and precise at every stage."
+        system_prompt = self.system_prompt
         if self.has_format_reward:
             user_prompt += "\nPlease answer the question in the following format: <think> your reasoning process </think> <answer> your final answer </answer>."
         if self.has_boxed_math_reward:
-            user_prompt += "\nPlease ensure your final answer is enclosed within \\boxed{}, and place it inside <answer>...</answer>."
+            user_prompt += "\nPlease ensure your final answer is put in \\boxed{}."
+
         user_conv = [
             {
                 "type": "text",
