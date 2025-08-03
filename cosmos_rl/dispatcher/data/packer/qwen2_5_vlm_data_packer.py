@@ -80,12 +80,15 @@ class Qwen2_5_VLM_DataPacker(DataPacker):
         prompt = self.hf_processor.apply_chat_template(
             sample, tokenize=False, add_generation_prompt=True
         )
-        image_inputs, video_inputs = process_vision_info(sample)
+        image_inputs, video_inputs, video_kwargs = process_vision_info(
+            sample, return_video_kwargs=True
+        )
 
         if video_inputs:
             return {
                 "prompt": prompt,
                 "multi_modal_data": {"video": video_inputs},
+                "mm_processor_kwargs": video_kwargs,
             }
         elif image_inputs:
             return {
@@ -588,7 +591,7 @@ class Qwen2_5_VLM_DataPacker(DataPacker):
         input_ids = x["input_ids"]
         completion_ids = []
         if rollout_output:
-            completion_ids = self.tokenizer(rollout_output).input_ids  # Don't pad yet
+            completion_ids = self.tokenizer(rollout_output).input_ids
 
         return_dict["input_ids"] = input_ids + completion_ids
 
