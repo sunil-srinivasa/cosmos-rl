@@ -166,12 +166,14 @@ class HFModel(BaseModel):
     def vision_layers(self):
         vision_layers = None
         if self.vision_model is not None:
-            vision_layers = getattr(self.vision_model, "blocks", None)
-            if vision_layers is None:
-                # Models like Gemma3-4b-it use SiglipVisionModel as vision_model
-                vision_layers = safe_deep_getattr(
-                    self.vision_model, "vision_model.encoder.layers", None
-                )
+            for path in [
+                "blocks",  # ClipVisionModel(Llava)
+                "vision_model.encoder.layers",  # SiglipVisionModel(Gemma)
+                "transformer.layers",  # PixtralVisionModel（Mistral）
+            ]:
+                vision_layers = safe_deep_getattr(self.vision_model, path, None)
+                if vision_layers is not None:
+                    break
             assert (
                 vision_layers is not None
             ), f"Can not get vision layers from {self.vision_model}."
@@ -366,7 +368,7 @@ class HFModel(BaseModel):
         """
         model_type = retry(AutoConfig.from_pretrained)(model_name_or_path).model_type
         model_with_weights = self.model_class.from_pretrained(model_name_or_path).to(
-            device
+            "cpu"
         )
 
         state_dict = model_with_weights.state_dict()
@@ -391,7 +393,7 @@ class HFModel(BaseModel):
                 local_view.shape == shared_weight.shape
             ), f"Shape mismatch: {local_view.shape} != {shared_weight.shape} for {dest_name}"
             with torch.no_grad():
-                local_view.data.copy_(shared_weight)
+                local_view.data.copy_(shared_weight.to(device))
 
         if (
             lm_head_weight_key not in all_tensor_names
@@ -416,7 +418,8 @@ class HFModel(BaseModel):
                     local_view.shape == shared_weight.shape
                 ), f"Shape mismatch: {local_view.shape} != {shared_weight.shape} for {dest_name}"
                 with torch.no_grad():
-                    local_view.data.copy_(shared_weight)
+                    local_view.data.copy_(shared_weight.to(device))
+        del model_with_weights
 
     def get_position_ids(self, **kwargs) -> Tuple[torch.Tensor, torch.Tensor, int]:
         position_ids = None
