@@ -3,7 +3,7 @@ redis = "12800"
 [train]
 resume = false
 epoch = 80
-output_dir = "./outputs/llava1-5-7b-p-fsdp2-r-tp4-grpo"
+output_dir = "./outputs/llava1-5-7b-p-fsdp4-r-tp2-grpo"
 epsilon = 1e-6
 optm_name = "AdamW"
 optm_lr = 2e-6
@@ -30,7 +30,7 @@ batch_size = 4
 quantization = "none"
 
 [policy]
-model_name_or_path = "llava-hf/llava-1.5-7b-hf"
+model_name_or_path = "llava-hf/llava-1.5-13b-hf"
 model_max_length = 4096
 model_gradient_checkpointing = true
 
@@ -68,14 +68,14 @@ save_mode = "async"
 
 [rollout.parallelism]
 n_init_replicas = 1
-tp_size = 1
+tp_size = 2
 pp_size = 1
 
 [policy.parallelism]
 n_init_replicas = 1
 tp_size = 1
 cp_size = 1
-dp_shard_size = 2
+dp_shard_size = 4
 pp_size = 1
 dp_replicate_size = 1
 cp_rotate_method = "allgather"
