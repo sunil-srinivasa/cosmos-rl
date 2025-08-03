@@ -47,6 +47,7 @@ dataset.split = "train"
 enable_dataset_cache = false
 dataloader_num_workers = 4
 dataloader_prefetch_factor = 4
+system_prompt = "You are a mathematics expert. For each math problem presented together with an image, thoroughly interpret the visual and textual information and provide a detailed, step-by-step solution, ensuring that your reasoning is clear and precise at every stage."
 prompt_column_name = "problem"
 response_column_name = "answer"
 image_column_name = "images"
