@@ -36,14 +36,16 @@ experiment_name = "cosmos-reason1-sft"
 
 [train.train_policy]
 type = "sft"
-dataset.name = "nvidia/Cosmos-Reason1-SFT-Dataset"
-dataset.subset = "robovqa"
-dataset.split = "understanding"
+dataset.name = "HuggingFaceH4/llava-instruct-mix-vsft"
+dataset.subset = ""
+dataset.split = "train"
 dataset.test_size = 100
 enable_dataset_cache = false
 dataloader_num_workers = 4
 dataloader_prefetch_factor = 4
-conversation_column_name = "conversations"
+conversation_column_name = "messages"
+image_column_name = "images"
+video_column_name = ""
 
 [train.ckpt]
 enable_checkpoint = true
