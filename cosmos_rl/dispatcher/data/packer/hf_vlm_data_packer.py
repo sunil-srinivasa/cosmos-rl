@@ -1,13 +1,38 @@
 from cosmos_rl.dispatcher.data.packer.base import DataPacker
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 from cosmos_rl.utils.util import retry
 from cosmos_rl.policy.config import Config
 from transformers import AutoTokenizer, AutoProcessor, AutoConfig
-from qwen_vl_utils import process_vision_info
+from PIL import Image
+import base64
+import io
 
 IGNORE_LABEL_ID = -100
+
+
+def process_vision_info(sample: List[Dict[str, Any]]) -> Tuple[Any, Any]:
+    image_inputs = []
+    video_inputs = []
+    for x in sample:
+        if x["role"] == "user":
+            for item in x["content"]:
+                if item["type"] == "image":
+                    image_inputs.append(item["image"])
+                if item["type"] == "video":
+                    video_inputs.append(item["video"])
+    return image_inputs, video_inputs
+
+
+def encode_image_to_base64(image_inputs: List[str]) -> List[str]:
+    new_image_inputs = []
+    for image_input in image_inputs:
+        img_bytes = base64.b64decode(image_input)
+        img_buffer = io.BytesIO(img_bytes)
+        image = Image.open(img_buffer)
+        new_image_inputs.append(image)
+    return new_image_inputs
 
 
 class HFVLMDataPacker(DataPacker):
@@ -40,10 +65,8 @@ class HFVLMDataPacker(DataPacker):
             image_token_id = getattr(hf_config, "image_token_index", None) or getattr(
                 hf_config.vision_config, "image_token_index", None
             )
-
         self.image_token_id = image_token_id
-        # if image_token_id is None:
-        #     self.image_token = None
+        self.image_token = getattr(self.hf_processor, "image_token", None)
 
         video_token_id = getattr(hf_config, "video_token_id", None) or getattr(
             hf_config.vision_config, "video_token_id", None
@@ -84,21 +107,36 @@ class HFVLMDataPacker(DataPacker):
             isinstance(x, dict) and "role" in x and "content" in x for x in sample
         ), "All samples should be in conversation format, but got: {}".format(sample)
 
+        if self.image_token is not None:
+            for x in sample:
+                if x["role"] == "user":
+                    contents = x["content"]
+                    for idx, content in enumerate(contents):
+                        if (
+                            content["type"] == "text"
+                            and self.image_token in content["text"]
+                        ):
+                            new_content = content.copy()
+                            contents[idx]["text"] = new_content["text"].replace(
+                                self.image_token, ""
+                            )
+
         # Here we need to convert the conversation format to the format required by vllm
         prompt = self.hf_processor.apply_chat_template(
             sample, tokenize=False, add_generation_prompt=True
         )
         image_inputs, video_inputs = process_vision_info(sample)
 
-        if video_inputs:
+        if len(video_inputs) > 0:
             return {
                 "prompt": prompt,
                 "multi_modal_data": {"video": video_inputs},
             }
-        elif image_inputs:
+        elif len(image_inputs) > 0:
+            assert len(image_inputs) == 1, f"{len(image_inputs)=}"
             return {
                 "prompt": prompt,
-                "multi_modal_data": {"image": image_inputs},
+                "multi_modal_data": {"image": image_inputs[0]},
             }
         else:
             return {
@@ -160,43 +198,78 @@ class HFVLMDataPacker(DataPacker):
             eos_token_id = self.tokenizer.eos_token_id
             pad_run_length = 10
             assistant_content = []
-            messages = conversation["messages"]
-            for message in messages:
-                if message["role"] == "assistant":
-                    content = message["content"]
-                    new_content = content.copy()
-                    if isinstance(new_content, str):
-                        assistant_content.append(new_content)
-                        new_content = pad_token * pad_run_length
-                    elif isinstance(new_content, dict):
-                        assert "text" in new_content, f"text not in content: {content}"
-                        assistant_content.append(new_content["text"])
-                        new_content["text"] = pad_token * pad_run_length
-                    elif isinstance(content, list):
-                        for i, item in enumerate(content):
-                            if isinstance(item, dict):
-                                assert "text" in item, f"text not in content: {item}"
-                                assistant_content.append(item["text"])
-                                new_content[i]["text"] = pad_token * pad_run_length
-                            else:
-                                raise ValueError(
-                                    f"Unsupported content type: {type(item)}"
-                                )
-                    else:
-                        raise ValueError(f"Unsupported content type: {type(content)}")
-                    message["content"] = new_content
+            messages = None
+            # SFT
+            if "messages" in conversation:
+                messages = conversation["messages"]
+                for message in messages:
+                    if message["role"] == "assistant":
+                        content = message["content"]
+                        new_content = content.copy()
+                        if isinstance(new_content, str):
+                            assistant_content.append(new_content)
+                            new_content = pad_token * pad_run_length
+                        elif isinstance(new_content, dict):
+                            assert (
+                                "text" in new_content
+                            ), f"text not in content: {content}"
+                            assistant_content.append(new_content["text"])
+                            new_content["text"] = pad_token * pad_run_length
+                        elif isinstance(content, list):
+                            for i, item in enumerate(content):
+                                if isinstance(item, dict):
+                                    assert (
+                                        "text" in item
+                                    ), f"text not in content: {item}"
+                                    assistant_content.append(item["text"])
+                                    new_content[i]["text"] = pad_token * pad_run_length
+                                else:
+                                    raise ValueError(
+                                        f"Unsupported content type: {type(item)}"
+                                    )
+                        else:
+                            raise ValueError(
+                                f"Unsupported content type: {type(content)}"
+                            )
+                        message["content"] = new_content
+            else:
+                # RL
+                messages = conversation
+                if self.image_token is not None:
+                    for x in messages:
+                        if x["role"] == "user":
+                            contents = x["content"]
+                            for idx, content in enumerate(contents):
+                                if (
+                                    content["type"] == "text"
+                                    and self.image_token in content["text"]
+                                ):
+                                    new_content = content.copy()
+                                    contents[idx]["text"] = new_content["text"].replace(
+                                        self.image_token, ""
+                                    )
 
             text = self.hf_processor.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
-            images = conversation["images"]
-            # image_inputs, video_inputs = process_vision_info(conversation)
+            if "images" in conversation:
+                image_inputs = conversation["images"]
+            else:
+                image_inputs, video_inputs = process_vision_info(conversation)
+                assert all(
+                    (isinstance(x, str) for x in image_inputs)
+                ), f"{image_inputs=}"
+                assert (
+                    len(video_inputs) == 0
+                ), "Currently video input is not supported for HF VLM"
+                image_inputs = encode_image_to_base64(image_inputs)
+
             kwarg = {
                 "padding": True,
                 "return_tensors": "pt",
-                "images": [images],
+                "images": image_inputs,
             }
 
             inputs = self.hf_processor(
@@ -376,7 +449,6 @@ class HFVLMDataPacker(DataPacker):
         # assert all(
         #     isinstance(x, dict) and "role" in x and "content" in x for x in sample
         # ), "All samples should be in conversation format, but got: {}".format(sample)
-
         x = self._process_single_sample(sample)
 
         return_dict = {}

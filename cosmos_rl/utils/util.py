@@ -31,6 +31,8 @@ import importlib
 import importlib.util
 import sys
 import glob
+import io
+from PIL import Image
 from filelock import FileLock, Timeout
 from collections import OrderedDict
 from functools import wraps
@@ -1085,3 +1087,21 @@ def reverse_hf_checkpoint_mapping(mapping):
     for k, v in mapping.items():
         reverse_map[r"^" + re.escape(v)] = k.lstrip("^")
     return reverse_map
+
+
+def decode_vision_info(prompts):
+    new_prompts = []
+    for prompt in prompts:
+        new_prompt = {}
+        new_prompt["prompt"] = prompt["prompt"]
+        if "multi_modal_data" in prompt:
+            multi_modal_data = prompt["multi_modal_data"]
+            new_prompt["multi_modal_data"] = {}
+            if "image" in multi_modal_data:
+                img_b64 = multi_modal_data["image"]
+                img_bytes = base64.b64decode(img_b64)
+                img_buffer = io.BytesIO(img_bytes)
+                image = Image.open(img_buffer)
+                new_prompt["multi_modal_data"]["image"] = image
+        new_prompts.append(new_prompt)
+    return new_prompts
