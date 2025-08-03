@@ -357,6 +357,11 @@ class GrpoConfig(BaseModel):
         "If the number of tokens is larger than the `min_filter_prefix_tokens`, the rollouts with the same prefix but different rewards will be filtered out in loss calculation.",
     )
 
+    system_prompt: str = Field(
+        default="",
+        description="System prompt for the model, which will be prepended to the prompt",
+    )
+
     @model_validator(mode="after")
     def check_params_value(self):
         assert self.variant in [
