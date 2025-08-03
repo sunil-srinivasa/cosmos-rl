@@ -426,8 +426,18 @@ class HFModel(BaseModel):
 
     def separate_model_parts(self) -> List[nn.Module]:
         if self.is_vlm:
-            # TODO: Add lm head
-            return [self.language_model, self.vision_model]
+            model_parts = [self.language_model, self.vision_model]
+            if self.multi_modal_projector is not None:
+                logger.info("Add multi_modal_projector into model parts")
+                model_parts.append(self.multi_modal_projector)
+            # lm_head could be in the model, not in the language_model
+            if (
+                getattr(self.language_model, "lm_head", None) is None
+                and getattr(self.model, "lm_head", None) is not None
+            ):
+                logger.info("Add lm_head into model parts")
+                model_parts.append(self.model.lm_head)
+            return model_parts
         else:
             return [self.language_model]
 

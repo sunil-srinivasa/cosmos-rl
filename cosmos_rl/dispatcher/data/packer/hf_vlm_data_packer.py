@@ -190,7 +190,9 @@ class HFVLMDataPacker(DataPacker):
         return False, token_ids, label_ids
 
     def _process_single_sample(
-        self, conversation: "HFVLMDataPacker.Payload"
+        self,
+        conversation: "HFVLMDataPacker.Payload",
+        add_generation_prompt: bool,
     ) -> Dict[str, Any]:
         try:
             # Replace all the assistant content with consecutive `pad_token` * 10
@@ -253,7 +255,7 @@ class HFVLMDataPacker(DataPacker):
             text = self.hf_processor.apply_chat_template(
                 messages,
                 tokenize=False,
-                add_generation_prompt=False,
+                add_generation_prompt=add_generation_prompt,
             )
             if "images" in conversation:
                 image_inputs = conversation["images"]
@@ -446,11 +448,15 @@ class HFVLMDataPacker(DataPacker):
         sample: "HFVLMDataPacker.Payload",
         rollout_output: Optional[str] = None,
         n_ignore_prefix_tokens: int = 0,
+        add_generation_prompt: bool = True,
     ) -> Any:
         # assert all(
         #     isinstance(x, dict) and "role" in x and "content" in x for x in sample
         # ), "All samples should be in conversation format, but got: {}".format(sample)
-        x = self._process_single_sample(sample)
+        x = self._process_single_sample(
+            sample,
+            add_generation_prompt=add_generation_prompt,
+        )
 
         return_dict = {}
         if "pixel_values_videos" in x:
@@ -509,7 +515,7 @@ class HFVLMDataPacker(DataPacker):
         """
         Accepts either raw text or conversation format.
         """
-        return self.get_policy_input(sample)
+        return self.get_policy_input(sample, add_generation_prompt=False)
 
     def sft_compute_max_len(self, processed_samples: List[Dict[str, Any]]) -> int:
         """
