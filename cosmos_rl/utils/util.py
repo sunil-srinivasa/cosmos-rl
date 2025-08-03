@@ -1095,13 +1095,35 @@ def decode_vision_info(prompts):
         new_prompt = {}
         new_prompt["prompt"] = prompt["prompt"]
         if "multi_modal_data" in prompt:
-            multi_modal_data = prompt["multi_modal_data"]
-            new_prompt["multi_modal_data"] = {}
+            multi_modal_data = prompt["multi_modal_data"].copy()
             if "image" in multi_modal_data:
-                img_b64 = multi_modal_data["image"]
-                img_bytes = base64.b64decode(img_b64)
-                img_buffer = io.BytesIO(img_bytes)
-                image = Image.open(img_buffer)
-                new_prompt["multi_modal_data"]["image"] = image
+                img_obj = multi_modal_data["image"]
+                assert isinstance(
+                    img_obj, list
+                ), f"image should be a list, but got {type(img_obj)}"
+                img_type = type(img_obj[0])
+                if img_type == str:
+                    for i, img_b64 in enumerate(img_obj):
+                        img_bytes = base64.b64decode(img_b64)
+                        img_buffer = io.BytesIO(img_bytes)
+                        image = Image.open(img_buffer)
+                        multi_modal_data["image"][i] = image
+                elif img_type == torch.Tensor:
+                    pass
+                else:
+                    raise ValueError(f"Unsupported image type: {img_type}")
+            if "video" in multi_modal_data:
+                video_obj = multi_modal_data["video"]
+                assert isinstance(
+                    video_obj, list
+                ), f"video should be a list, but got {type(video_obj)}"
+                video_type = type(video_obj[0])
+                # No need to decode video tensor
+                if video_type == torch.Tensor:
+                    pass
+                else:
+                    raise ValueError(f"Unsupported video type: {video_type}")
+
+            new_prompt["multi_modal_data"] = multi_modal_data
         new_prompts.append(new_prompt)
     return new_prompts

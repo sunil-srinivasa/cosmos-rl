@@ -126,17 +126,18 @@ class HFVLMDataPacker(DataPacker):
             sample, tokenize=False, add_generation_prompt=True
         )
         image_inputs, video_inputs = process_vision_info(sample)
-
+        # TODO: add video support
         if len(video_inputs) > 0:
             return {
                 "prompt": prompt,
                 "multi_modal_data": {"video": video_inputs},
+                "mm_processor_kwargs": {},
             }
         elif len(image_inputs) > 0:
             assert len(image_inputs) == 1, f"{len(image_inputs)=}"
             return {
                 "prompt": prompt,
-                "multi_modal_data": {"image": image_inputs[0]},
+                "multi_modal_data": {"image": image_inputs},
             }
         else:
             return {
