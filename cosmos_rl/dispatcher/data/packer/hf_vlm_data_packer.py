@@ -331,6 +331,17 @@ class HFVLMDataPacker(DataPacker):
             result_dict["pixel_values_lengths_per_sample"] = inputs[
                 "pixel_values"
             ].shape[0]
+
+        if "aspect_ratio_ids" in inputs:
+            result_dict["aspect_ratio_ids"] = inputs["aspect_ratio_ids"]
+        else:
+            result_dict["aspect_ratio_ids"] = None
+
+        if "aspect_ratio_mask" in inputs:
+            result_dict["aspect_ratio_mask"] = inputs["aspect_ratio_mask"]
+        else:
+            result_dict["aspect_ratio_mask"] = None
+
         return result_dict
 
     def _collate_fn(
@@ -347,6 +358,8 @@ class HFVLMDataPacker(DataPacker):
         pixel_values_lengths_per_sample = [
             x["pixel_values_lengths_per_sample"] for x in processed_samples
         ]
+        aspect_ratio_ids = [x["aspect_ratio_ids"] for x in processed_samples]
+        aspect_ratio_mask = [x["aspect_ratio_mask"] for x in processed_samples]
 
         if all([x is not None for x in pixel_values_videos]):
             assert all(
@@ -386,6 +399,22 @@ class HFVLMDataPacker(DataPacker):
             image_grid_thw = None
             pixel_values_lengths_per_sample = None
 
+        if all([x is not None for x in aspect_ratio_ids]):
+            aspect_ratio_ids = torch.cat(aspect_ratio_ids, dim=0)
+        else:
+            assert all(
+                [x is None for x in aspect_ratio_ids]
+            ), "aspect_ratio_ids should be None"
+            aspect_ratio_ids = None
+
+        if all([x is not None for x in aspect_ratio_mask]):
+            aspect_ratio_mask = torch.cat(aspect_ratio_mask, dim=0)
+        else:
+            assert all(
+                [x is None for x in aspect_ratio_mask]
+            ), "aspect_ratio_mask should be None"
+            aspect_ratio_mask = None
+
         # Shape description:
         #
         # pixel_values_[videos/images]: (BATCH_SIZE, N_PATCH, HIDDEN_SIZE)
@@ -407,6 +436,12 @@ class HFVLMDataPacker(DataPacker):
             batch["pixel_values_lengths_per_sample"] = torch.tensor(
                 pixel_values_lengths_per_sample, dtype=torch.long
             ).view(-1, 1)
+
+        if aspect_ratio_ids is not None:
+            batch["aspect_ratio_ids"] = aspect_ratio_ids
+
+        if aspect_ratio_mask is not None:
+            batch["aspect_ratio_mask"] = aspect_ratio_mask
 
         # Pad the input_ids, logprob_masks
         batch["input_ids"] = torch.tensor(
@@ -482,6 +517,16 @@ class HFVLMDataPacker(DataPacker):
             return_dict["pixel_values"] = None
             return_dict["image_grid_thw"] = None
             return_dict["pixel_values_lengths_per_sample"] = None
+
+        if "aspect_ratio_ids" in x:
+            return_dict["aspect_ratio_ids"] = x["aspect_ratio_ids"]
+        else:
+            return_dict["aspect_ratio_ids"] = None
+
+        if "aspect_ratio_mask" in x:
+            return_dict["aspect_ratio_mask"] = x["aspect_ratio_mask"]
+        else:
+            return_dict["aspect_ratio_mask"] = None
 
         # Common fields
         input_ids = x["input_ids"]

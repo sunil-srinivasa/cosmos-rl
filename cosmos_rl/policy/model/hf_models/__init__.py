@@ -251,6 +251,8 @@ class HFModel(BaseModel):
                 vision_model = self.model.vision_tower
             elif hasattr(self.model, "visual"):
                 vision_model = self.model.visual
+            elif hasattr(self.model, "vision_model"):
+                vision_model = self.model.vision_model
             else:
                 raise ValueError(f"Can not get vision model from {self.model}")
         return vision_model
