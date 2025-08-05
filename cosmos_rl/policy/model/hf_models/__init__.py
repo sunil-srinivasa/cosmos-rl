@@ -170,6 +170,7 @@ class HFModel(BaseModel):
                 "blocks",  # ClipVisionModel(Llava)
                 "vision_model.encoder.layers",  # SiglipVisionModel(Gemma)
                 "transformer.layers",  # PixtralVisionModel（Mistral）
+                "model.layers",  # Llama4VisionModel
             ]:
                 vision_layers = safe_deep_getattr(self.vision_model, path, None)
                 if vision_layers is not None:

@@ -2,8 +2,8 @@ redis = "12800"
 
 [train]
 resume = false
-epoch = 80
-output_dir = "./outputs/llava1-5-7b-p-fsdp4-r-tp2-grpo"
+epoch = 5
+output_dir = "./outputs/llava1-5-13b-p-fsdp4-r-tp2-grpo"
 epsilon = 1e-6
 optm_name = "AdamW"
 optm_lr = 2e-6
@@ -41,17 +41,14 @@ experiment_name = "cosmos-reason1-rl"
 
 [train.train_policy]
 type = "grpo"
-dataset.name = "hiyouga/geometry3k"
+dataset.name = "lmms-lab/multimodal-open-r1-8k-verified"
 dataset.subset = ""
 dataset.split = "train"
 enable_dataset_cache = false
 dataloader_num_workers = 4
 dataloader_prefetch_factor = 4
-system_prompt = "You are a mathematics expert. For each math problem presented together with an image, thoroughly interpret the visual and textual information and provide a detailed, step-by-step solution, ensuring that your reasoning is clear and precise at every stage."
 prompt_column_name = "problem"
 response_column_name = "answer"
-image_column_name = "images"
-video_column_name = ""
 reward_function = { boxed_math = 0.9, format = 0.1 }
 temperature = 0.9
 epsilon_low = 0.2

@@ -22,9 +22,6 @@ from transformers import AutoTokenizer
 import argparse
 import toml
 
-FPS = 1
-MAX_PIXELS = 81920
-
 
 class HFVLMSFTDataset(Dataset):
     def __init__(self, dataset: Dataset):
@@ -36,20 +33,6 @@ class HFVLMSFTDataset(Dataset):
         """
         self.config = config
         self.tokenizer = tokenizer
-        self.conversation_column_name = (
-            config.train.train_policy.conversation_column_name
-        )
-        self.image_column_name = config.train.train_policy.image_column_name
-        self.video_column_name = config.train.train_policy.video_column_name
-        self.has_image = self.image_column_name != ""
-        self.has_video = self.video_column_name != ""
-        # self.image_dir = None
-        # self.image_files_paths = None
-        # self.video_dir = None
-        # self.video_files_paths = None
-        assert (
-            self.has_image or self.has_video
-        ), "At least one of image or video column name must be provided"
 
         if config.train.train_policy.dataset.split:
             if isinstance(config.train.train_policy.dataset.split, list):
@@ -61,52 +44,11 @@ class HFVLMSFTDataset(Dataset):
                 assert isinstance(config.train.train_policy.dataset.split, str)
                 self.dataset = self.dataset[config.train.train_policy.dataset.split]
 
-        # get multi-modal files paths
-        # cosmos_cache_dir = os.environ.get(
-        #     "COSMOS_CACHE", os.path.join(os.path.expanduser("~"), ".cache/cosmos/")
-        # )
-        # if self.has_image:
-        #     self.image_dir = os.path.join(
-        #         cosmos_cache_dir,
-        #         "datasets",
-        #         basename_from_modelpath(config.train.train_policy.dataset.name),
-        #         config.train.train_policy.dataset.subset,
-        #         self.image_column_name,
-        #     )
-        #     if not os.path.exists(self.image_dir):
-        #         raise FileNotFoundError(
-        #             f"Dataset directory {self.image_dir} does not exist. Please check the dataset path."
-        #         )
-        #     image_files_paths = {}
-        #     for root, dirs, files in os.walk(self.image_dir):
-        #         for file in files:
-        #             if file.endswith((".jpg", ".jpeg", ".png")):  # Common image extensions
-        #                 image_files_paths[file] = os.path.join(root, file)
-        #     self.image_files_paths = image_files_paths
-
-        # if self.has_video:
-        #     self.video_dir = os.path.join(
-        #         cosmos_cache_dir,
-        #         "datasets",
-        #         basename_from_modelpath(config.train.train_policy.dataset.name),
-        #         config.train.train_policy.dataset.subset,
-        #         self.video_column_name,
-        #     )
-        #     if not os.path.exists(self.video_dir):
-        #         raise FileNotFoundError(
-        #             f"Dataset directory {self.video_dir} does not exist. Please check the dataset path."
-        #         )
-        #     video_files_paths = {}
-        #     for root, dirs, files in os.walk(self.video_dir):
-        #         for file in files:
-        #             if file.endswith((".mp4", ".avi", ".mov")):  # Common video extensions
-        #                 video_files_paths[file] = os.path.join(root, file)
-        #     self.video_files_paths = video_files_paths
-
     def __len__(self):
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
+        # The dataset is a list of {}
         conversations = self.dataset[idx]
         return conversations
 

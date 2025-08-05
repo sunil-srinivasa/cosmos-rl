@@ -37,11 +37,14 @@ class HFVLMGRPODataset(Dataset):
             config.train.train_policy.dataset.name,
             config.train.train_policy.dataset.subset,
         )
-        self.system_prompt = config.train.train_policy.system_prompt
+        # Change the system prompt to the one you want
+        self.system_prompt = "You are a mathematics expert. For each math problem presented together with an image, thoroughly interpret the visual and textual information and provide a detailed, step-by-step solution, ensuring that your reasoning is clear and precise at every stage."
         self.prompt_column_name = config.train.train_policy.prompt_column_name
         self.response_column_name = config.train.train_policy.response_column_name
-        self.image_column_name = config.train.train_policy.image_column_name
-        self.video_column_name = config.train.train_policy.video_column_name
+        # Below is the image/video column name for the dataset lmms-lab/multimodal-open-r1-8k-verified
+        # You can change it to the column name of your dataset
+        self.image_column_name = "image"
+        self.video_column_name = ""
         self.has_image = self.image_column_name != ""
         self.has_video = self.video_column_name != ""
         self.reward_function = config.train.train_policy.reward_function

@@ -270,7 +270,6 @@ class HFVLMDataPacker(DataPacker):
                 image_inputs = encode_image_to_base64(image_inputs)
 
             kwarg = {
-                "padding": True,
                 "return_tensors": "pt",
                 "images": image_inputs,
             }
