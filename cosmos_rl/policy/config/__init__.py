@@ -130,14 +130,6 @@ class SFTDataConfig(BaseModel):
         default="conversations",  # "conversation",
         description="Column name for formated conversation json",
     )
-    image_column_name: str = Field(
-        default="",
-        description="Column name for image",
-    )
-    video_column_name: str = Field(
-        default="",
-        description="Column name for video",
-    )
     system_prompt: str = Field(
         default="",
         description="System prompt for the model, which will be prepended to the prompt",
@@ -267,14 +259,6 @@ class GrpoConfig(BaseModel):
         default="",
         description="Column name for response/reference answer",
     )
-    image_column_name: str = Field(
-        default="",
-        description="Column name for image",
-    )
-    video_column_name: str = Field(
-        default="",
-        description="Column name for video",
-    )
     reward_function: Union[str, List[str], Dict[str, float]] = Field(
         default_factory=lambda: ["single_choice"],
         description="Reward functions for the model. Currently support `single_choice`, `boxed_math`, and `format`. You can add weight to each reward function by passing a dict, e.g., {'single_choice': 0.9, 'format': 0.1}",
@@ -355,11 +339,6 @@ class GrpoConfig(BaseModel):
         default=None,
         description="Minimum number of tokens to filter the prefix tokens for the rollouts inside the same group. "
         "If the number of tokens is larger than the `min_filter_prefix_tokens`, the rollouts with the same prefix but different rewards will be filtered out in loss calculation.",
-    )
-
-    system_prompt: str = Field(
-        default="",
-        description="System prompt for the model, which will be prepended to the prompt",
     )
 
     @model_validator(mode="after")
