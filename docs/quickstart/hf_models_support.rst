@@ -93,7 +93,7 @@ VLMs
 - Currently under active development
 
 .. note::
-   While Mistral, Gemma, and Phi have been extensively tested, other Hugging Face models should also be compatible. If you encounter issues with untested models, please report them by opening an issue in our repository.
+   While models above have been extensively tested, other Hugging Face models should also be compatible. If you encounter issues with untested models, please report them by opening an issue in our repository.
 
 .. tip::
    The generic HF Model wrapper enables support for most Hugging Face models without additional configuration. For optimal performance, consider using models that have been specifically tested and optimized.
