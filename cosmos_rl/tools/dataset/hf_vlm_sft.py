@@ -48,7 +48,7 @@ class HFVLMSFTDataset(Dataset):
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> tuple[str, str]:
-        # The dataset is a list of {}
+        # The dataset is a list of {messages, images} pair
         conversations = self.dataset[idx]
         return conversations
 
