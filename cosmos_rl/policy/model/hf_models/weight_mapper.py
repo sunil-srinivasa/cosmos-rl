@@ -119,9 +119,7 @@ class HFModelWeightMapper(WeightMapper):
                 up_proj_weight_key = compatible_key.replace("gate_up_proj", "up_proj")
                 vllm_weight_inplace_view_map[up_proj_weight_key] = up_proj_weight
                 group_keys.append((up_proj_weight_key, up_proj_weight.ndim))
-            elif "qkv" in compatible_key and (
-                "visual" in compatible_key or "vision_tower" in compatible_key
-            ):
+            elif "qkv" in compatible_key:
                 q_weight, k_weight, v_weight = self._rollout_split_qkv_weight(
                     compatible_key, param
                 )
