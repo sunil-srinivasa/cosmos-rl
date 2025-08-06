@@ -360,6 +360,7 @@ class HFModel(BaseModel):
         model_name_or_path: str,
         parallel_dims: ParallelDims,
         device: torch.device,
+        revision: Optional[str] = None,
     ):
         """
         Load weights from a HuggingFace model.
@@ -370,9 +371,9 @@ class HFModel(BaseModel):
             info_inly (bool): Only collect the tensor infomation without actual data loading.
         """
         model_type = retry(AutoConfig.from_pretrained)(model_name_or_path).model_type
-        model_with_weights = self.model_class.from_pretrained(model_name_or_path).to(
-            "cpu"
-        )
+        model_with_weights = self.model_class.from_pretrained(
+            model_name_or_path, revision=revision
+        ).to("cpu")
 
         state_dict = model_with_weights.state_dict()
         self_state_dict = self.model.state_dict()
