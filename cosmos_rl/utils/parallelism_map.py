@@ -26,6 +26,7 @@ from vllm.model_executor.layers.linear import (
     QKVParallelLinear,
     MergedColumnParallelLinear,
 )
+from vllm.attention import Attention
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.vocab_parallel_embedding import VocabParallelEmbedding
 
@@ -828,6 +829,12 @@ class ParallelTopoMapper:
                             is_bias = False
                         elif part_name == "w2_weight":
                             is_bias = False
+                        elif part_name == "w13_bias":
+                            is_bias = False
+                        elif part_name == "w2_bias":
+                            is_bias = False
+                        elif part_name == "sinks":
+                            is_bias = False
                         # FIXME: (lms) bias could also tp-ed?
                         else:
                             logger.warning(
@@ -885,6 +892,14 @@ class ParallelTopoMapper:
                 elif "w2_weight" in param_name:
                     # FIXME: (lms) not use ep now. Add support for ep later.
                     dims_map["tp"] = 2
+                elif "w13_bias" in param_name:
+                    dims_map["tp"] = 1
+                elif "w2_bias" in param_name:
+                    # for down_proj_bias, each rank will hold full copy.
+                    pass
+            elif isinstance(part, Attention):
+                if "sinks" in param_name:
+                    dims_map["tp"] = 0  # sinks has shape [num_heads]
             else:
                 assert (
                     "Parallel" not in part.__class__.__name__
