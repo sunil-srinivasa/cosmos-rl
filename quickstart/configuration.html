@@ -1919,7 +1919,7 @@
 <tr class="row-even"><td><p>default</p></td>
 <td colspan="3"><p>False</p></td>
 </tr>
-<tr class="row-odd"><td rowspan="150"><ul class="simple">
+<tr class="row-odd"><td rowspan="164"><ul class="simple">
 <li><p>TrainingConfig</p></li>
 </ul>
 </td>
@@ -2234,6 +2234,56 @@
 </tr>
 <tr class="row-even"><td><p>default</p></td>
 <td colspan="3"><p>20</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="5"><ul class="simple">
+<li><p>optm_decay_ratio</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Optm Decay Ratio</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="4"><p>Ratio of total steps for decay, range in [0.0, 1.0], 0 means no decay.</p></td>
+</tr>
+<tr class="row-odd"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-even"><td rowspan="2"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>number</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="2"><p><em>null</em></p></td>
+</tr>
+<tr class="row-even"><td rowspan="5"><ul class="simple">
+<li><p>optm_decay_type</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Optm Decay Type</em></p></td>
+</tr>
+<tr class="row-odd"><td colspan="4"><p>Type of decay for optimizer</p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="2"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>string</em></p></td>
+</tr>
+<tr class="row-even"><td><p>type</p></td>
+<td colspan="2"><p><em>null</em></p></td>
+</tr>
+<tr class="row-odd"><td rowspan="4"><ul class="simple">
+<li><p>optm_min_lr_factor</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Optm Min Lr Factor</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="4"><p>Minimum lr factor for optimizer, range in [0.0, 1.0]</p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="3"><p><em>number</em></p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>0.0</p></td>
 </tr>
 <tr class="row-odd"><td rowspan="4"><ul class="simple">
 <li><p>optm_grad_norm_clip</p></li>
