@@ -681,9 +681,9 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                         # logger.info(
                         #     f"LMS: dtype: {vllm_native_weight.dtype} and {quantized_weight.dtype}, vllm_native_weight.shape: {vllm_native_weight.shape}, quantized_weight.shape: {quantized_weight.shape}"
                         # )
-                        # with torch.inference_mode():
-                        #     vllm_native_weight.copy_(quantized_weight)
-                        #     vllm_native_weight_scale.copy_(weight_scale)
+                        with torch.inference_mode():
+                            vllm_native_weight.copy_(quantized_weight)
+                            vllm_native_weight_scale.copy_(weight_scale)
 
                         #     logger.info(f"LMS: copy done for {inst_group_full_weight_name}")
             else:
