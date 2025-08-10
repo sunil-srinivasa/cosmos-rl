@@ -299,7 +299,14 @@ class HFLLMModel(BaseModel):
 
     def post_transform_of_local_view(self, local_view: torch.Tensor, name: str):
         if self.hf_config.model_type == "gpt_oss":
-            if "gate_up_proj" in name:
+            # Note: DO NOT change if-condition orders.
+            # vLLM change gate_up_proj_bias and gate_up_proj_bias to float32.
+            # To keep nccl sync correct, we need to convert them to float32, too.
+            if "gate_up_proj_bias" in name:
+                return local_view.to(torch.float32)
+            elif "down_proj_bias" in name:
+                return local_view.to(torch.float32)
+            elif "gate_up_proj" in name:
                 return local_view.transpose(-2, -1).contiguous()
             elif "down_proj" in name:
                 return local_view.transpose(-2, -1).contiguous()

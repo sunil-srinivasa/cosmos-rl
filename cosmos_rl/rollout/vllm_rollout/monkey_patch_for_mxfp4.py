@@ -15,13 +15,10 @@ This file is used to patch the vllm model to use mxfp4 for GPT-OSS now.
 
 def quantize_mx4(w):
     from triton_kernels.numerics_details.mxfp import downcast_to_mxfp
-    from triton_kernels.tensor import convert_layout
-    from triton_kernels.tensor_details.layout import StridedLayout, HopperMXValueLayout
-    from triton_kernels.tensor import wrap_torch_tensor, FP4
 
     w, w_scale = downcast_to_mxfp(w.to(torch.bfloat16), torch.uint8, axis=1)
-    w = convert_layout(wrap_torch_tensor(w, dtype=FP4), HopperMXValueLayout, mx_axis=1)
-    w_scale = convert_layout(wrap_torch_tensor(w_scale), StridedLayout)
+    # w = convert_layout(wrap_torch_tensor(w, dtype=FP4), HopperMXValueLayout, mx_axis=1)
+    # w_scale = convert_layout(wrap_torch_tensor(w_scale), StridedLayout)
     return w, w_scale
 
 

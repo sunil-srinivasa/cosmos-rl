@@ -281,12 +281,10 @@ class vLLMRollout(RolloutBase):
         # 1. Quantize the original bf16 weight sent by policy:
         from cosmos_rl.rollout.vllm_rollout.monkey_patch_for_mxfp4 import quantize_mx4
 
-        # weight_mxfp4 and weight_scale_mxfp4 are triton.Tensor
+        # weight_mxfp4 and weight_scale_mxfp4 are torch.Tensor
         weight_mxfp4, weight_scale_mxfp4 = quantize_mx4(weight.to(torch.bfloat16))
-        weight_mxfp4 = weight_mxfp4.storage.data  # Now torch.Tensor
-        weight_scale_mxfp4 = weight_scale_mxfp4.storage.data.transpose(
-            -2, -1
-        ).contiguous()  # Now torch.Tensor
+        weight_mxfp4 = weight_mxfp4.transpose(-2, -1).contiguous()  # Now torch.Tensor
+        weight_scale_mxfp4 = weight_scale_mxfp4.transpose(-2, -1).contiguous()
         # For weight_mxfp4:
         # [num_experts, 2 * intermediate_size, hidden_size // mxfp4_block_size, 16] for gate_up_proj
         # [num_experts, hidden_size, intermediate_size // mxfp4_block_size, 16] for down_proj
@@ -294,9 +292,9 @@ class vLLMRollout(RolloutBase):
         # [num_experts, 2 * intermediate_size, hidden_size // mxfp4_block_size] for gate_up_proj
         # [num_experts, hidden_size, intermediate_size // mxfp4_block_size] for down_proj
 
-        logger.info(
-            f"LMS: weight shape: {weight.shape}, weight_mxfp4.shape: {weight_mxfp4.shape}, weight_scale_mxfp4.shape: {weight_scale_mxfp4.shape}"
-        )
+        # logger.info(
+        #     f"LMS: P2R weight shape: {weight.shape}, weight_mxfp4.shape: {weight_mxfp4.shape}, weight_scale_mxfp4.shape: {weight_scale_mxfp4.shape}"
+        # )
 
         # 2. Post process
         from vllm.model_executor.layers.quantization.utils.mxfp4_utils import (

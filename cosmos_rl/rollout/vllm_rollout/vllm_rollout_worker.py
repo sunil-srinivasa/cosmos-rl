@@ -66,6 +66,7 @@ from cosmos_rl.utils.api_suffix import (
     COSMOS_API_ROLLOUT_SHARD_INFOS_SUFFIX,
     COSMOS_API_ROLLOUT_SHARD_RECV_INSTS_SUFFIX,
 )
+from cosmos_rl.utils.constant import COSMOS_P2R_TRANSFER_GROUP_SIZE
 
 from vllm import SamplingParams
 import time
@@ -541,8 +542,11 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 logger.debug(
                     f"Recving tensor {inst_dest_name} from policy rank {p_rank}, shape {vllm_tensor_view.shape} of {target_tensor.shape}."
                 )
-
+                logger.info(
+                    f"LMS: recving: {inst_dest_name}: recv_tensor.shape: {recv_tensor.shape}"
+                )
                 nccl_recv(recv_tensor, p_rank, communicator_index)
+                logger.info(f"LMS: recving done: {inst_dest_name}")
                 # inplace copy
                 if not vllm_tensor_view.is_contiguous():
                     all_cloned_target_tensors.append((vllm_tensor_view, recv_tensor))
@@ -567,15 +571,15 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 insts,
                 inst_dest_name,
             ) in tensors_to_check:
-                passed = torch.allclose(cloned_target_tensor, target_tensor)
-                logger.info(
-                    f"LMS: do weight sync check for {inst_dest_name}: cloned_target_tensor.shape: {cloned_target_tensor.shape}, target_tensor.shape: {target_tensor.shape}: {passed}, dtype: {cloned_target_tensor.dtype}, target_tensor.dtype: {target_tensor.dtype}"
-                )
-
+                # logger.info(
+                #     f"LMS: do weight sync check for {inst_dest_name}: cloned_target_tensor.shape: {cloned_target_tensor.shape}, target_tensor.shape: {target_tensor.shape}, dtype: {cloned_target_tensor.dtype}, target_tensor.dtype: {target_tensor.dtype}, device: {cloned_target_tensor.device}, target_tensor.device: {target_tensor.device}"
+                # )
+                # FIXME: (lms) for gpt-oss, allclose will hang for `down_proj_bias`, disable this temporarily.
                 if not torch.allclose(cloned_target_tensor, target_tensor):
                     raise ValueError(
                         f"Weight sync check failed after weight sync instruction: {insts} for {inst_dest_name}."
                     )
+                logger.info(f"LMS: weight sync check passed for {inst_dest_name}")
             tensors_to_check.clear()
 
             # here we got one full weight tensor sync done, if it is fp8 weight, we should do the quantization and check the numerical error.
@@ -674,11 +678,14 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                         assert (
                             vllm_native_weight_scale is not None
                         ), f"Failed to find the original weight scale for {inst_group_full_weight_name}"
-                        logger.info(
-                            f"LMS: dtype: {vllm_native_weight.dtype} and {quantized_weight.dtype}, vllm_native_weight.shape: {vllm_native_weight.shape}, quantized_weight.shape: {quantized_weight.shape}"
-                        )
-                        vllm_native_weight.copy_(quantized_weight)
-                        vllm_native_weight_scale.copy_(weight_scale)
+                        # logger.info(
+                        #     f"LMS: dtype: {vllm_native_weight.dtype} and {quantized_weight.dtype}, vllm_native_weight.shape: {vllm_native_weight.shape}, quantized_weight.shape: {quantized_weight.shape}"
+                        # )
+                        # with torch.inference_mode():
+                        #     vllm_native_weight.copy_(quantized_weight)
+                        #     vllm_native_weight_scale.copy_(weight_scale)
+
+                        #     logger.info(f"LMS: copy done for {inst_group_full_weight_name}")
             else:
                 # For non-fp8 weights and fp8 not enabled cases, we just do nothing
                 pass
@@ -818,7 +825,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
 
             nccl_group_start(communicator_index)
 
-            TRANSFER_GROUP_SIZE = 4
             for insts_group in self.policy_to_rollout_recv_insts:
                 # insts_group: WeightSyncInstructionsGroup -> inst collection for a full weight tensor
                 # handle inst group
@@ -833,7 +839,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 total_bytes_received += bytes_received
 
                 pending_groups += 1
-                if pending_groups == TRANSFER_GROUP_SIZE:
+                if pending_groups == COSMOS_P2R_TRANSFER_GROUP_SIZE:
                     nccl_group_end(communicator_index)
                     flush_completions(pending_bytes, pending_completions)
                     nccl_group_start(communicator_index)

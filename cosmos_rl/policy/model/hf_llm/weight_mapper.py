@@ -19,7 +19,6 @@ from typing import List, Tuple, Dict, Any
 from cosmos_rl.policy.model.base import WeightMapper
 from cosmos_rl.utils import util
 from transformers import AutoConfig
-from cosmos_rl.utils.logging import logger
 
 
 class HFLLMWeightMapper(WeightMapper):
@@ -89,9 +88,9 @@ class HFLLMWeightMapper(WeightMapper):
         for param_name, param in vllm_model.named_parameters():
             group_keys = []
             compatible_key = self._rollout_vllm_name_to_hf(param_name)
-            logger.info(
-                f"[Rollout] compatible_key: {param_name=}, {compatible_key=}, shape: {param.shape}, dtype: {param.dtype}, device: {param.device}"
-            )
+            # logger.info(
+            #     f"[Rollout] compatible_key: {param_name=}, {compatible_key=}, shape: {param.shape}, dtype: {param.dtype}, device: {param.device}"
+            # )
             if any(rule in compatible_key for rule in ["qkv_proj", "qkv"]):
                 # must be inplace slicing.
                 # split qkv weight
