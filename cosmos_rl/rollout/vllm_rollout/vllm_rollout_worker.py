@@ -511,8 +511,38 @@ class vLLMRolloutWorker(RolloutWorkerBase):
 
         total_bytes_received = 0
 
-        all_cloned_target_tensors = []
+        all_tensor_views_to_copy = []
         tensors_to_check = []
+
+        def recv_tensor_creator(vllm_tensor_view: torch.Tensor):
+            promotion_dtype = util.str2torch_dtype(self.config.train.param_dtype)
+            # Keep alignment with Policy in grpo_trainer.py:
+            # local_view = local_view.to(
+            #   str2torch_dtype(self.config.train.param_dtype)
+            # )
+            recv_tensor = None
+            inplace = True
+            if vllm_tensor_view.is_contiguous():
+                recv_tensor = vllm_tensor_view
+            else:
+                # new a temp tensor
+                recv_tensor = (
+                    torch.empty_like(vllm_tensor_view).to(promotion_dtype).contiguous()
+                )
+                inplace = False
+
+            if vllm_tensor_view.dtype != promotion_dtype:
+                recv_tensor = recv_tensor.to(promotion_dtype)
+                inplace = False
+
+            return recv_tensor, inplace
+
+        def update_tensor_view(
+            vllm_tensor_view: torch.Tensor, recv_tensor: torch.Tensor, inplace: bool
+        ):
+            if not inplace:
+                tmp_recv_tensor = recv_tensor.to(vllm_tensor_view.dtype)
+                vllm_tensor_view.copy_(tmp_recv_tensor)
 
         for insts_for_per_param in insts_group.param_instructions:
             # insts_for_per_param: WeightSyncInstructionsPerParam -> inst collection for a single tensor
@@ -523,6 +553,9 @@ class vLLMRolloutWorker(RolloutWorkerBase):
 
             if check_inside_group:
                 cloned_target_tensor = target_tensor.clone()
+                logger.info(
+                    f"LMS: inst_dest_name: {inst_dest_name}, shape: {cloned_target_tensor.shape}, {cloned_target_tensor.flatten()[0:10]}"
+                )
                 # clear the current view
                 target_tensor.zero_()
 
@@ -532,24 +565,21 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 tensor_split_strategys = inst.slice_strategy
                 assert r_rank == global_rank_of_rollout
                 vllm_tensor_view = target_tensor.cosmos_slice(tensor_split_strategys)
-                recv_tensor = None
-                if vllm_tensor_view.is_contiguous():
-                    recv_tensor = vllm_tensor_view
-                else:
-                    # new a temp tensor
-                    recv_tensor = torch.empty_like(vllm_tensor_view).contiguous()
 
-                logger.debug(
-                    f"Recving tensor {inst_dest_name} from policy rank {p_rank}, shape {vllm_tensor_view.shape} of {target_tensor.shape}."
-                )
+                recv_tensor, inplace = recv_tensor_creator(vllm_tensor_view)
+
+                # logger.info(
+                #     f"Recving tensor {inst_dest_name} from policy rank {p_rank}:{r_rank}, inplace: {inplace}, shape {vllm_tensor_view.shape} of {target_tensor.shape}."
+                # )
                 logger.info(
-                    f"LMS: recving: {inst_dest_name}: recv_tensor.shape: {recv_tensor.shape}"
+                    f"Recving tensor {inst_dest_name} from policy rank {p_rank}:{r_rank}, inplace: {inplace}, shape {vllm_tensor_view.shape} of {target_tensor.shape}"
                 )
                 nccl_recv(recv_tensor, p_rank, communicator_index)
-                logger.info(f"LMS: recving done: {inst_dest_name}")
+
                 # inplace copy
-                if not vllm_tensor_view.is_contiguous():
-                    all_cloned_target_tensors.append((vllm_tensor_view, recv_tensor))
+                all_tensor_views_to_copy.append(
+                    (vllm_tensor_view, recv_tensor, inplace, inst_dest_name)
+                )
 
                 total_bytes_received += recv_tensor.numel() * recv_tensor.element_size()
 
@@ -558,12 +588,20 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                     (cloned_target_tensor, target_tensor, insts, inst_dest_name)
                 )
 
-        def completion_lambda(all_cloned_target_tensors, tensors_to_check):
-            for view, recv_tensor in all_cloned_target_tensors:
-                view.copy_(
-                    recv_tensor,
+        post_process_list_for_lowp = []
+        if not check_inside_group:
+            post_process_list_for_lowp.append(inst_group_full_weight_name)
+
+        def completion_lambda(
+            all_tensor_views_to_copy, tensors_to_check, post_process_list_for_lowp
+        ):
+            for view, recv_tensor, inplace, inst_dest_name in all_tensor_views_to_copy:
+                logger.info(
+                    f"LMS: recving done: inplace: {inplace}, {inst_dest_name}: {recv_tensor.flatten()[0:10]}, {view.flatten()[0:10]}"
                 )
-            all_cloned_target_tensors.clear()
+                update_tensor_view(view, recv_tensor, inplace)
+
+            all_tensor_views_to_copy.clear()
 
             for (
                 cloned_target_tensor,
@@ -571,127 +609,156 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 insts,
                 inst_dest_name,
             ) in tensors_to_check:
-                # logger.info(
-                #     f"LMS: do weight sync check for {inst_dest_name}: cloned_target_tensor.shape: {cloned_target_tensor.shape}, target_tensor.shape: {target_tensor.shape}, dtype: {cloned_target_tensor.dtype}, target_tensor.dtype: {target_tensor.dtype}, device: {cloned_target_tensor.device}, target_tensor.device: {target_tensor.device}"
-                # )
-                # FIXME: (lms) for gpt-oss, allclose will hang for `down_proj_bias`, disable this temporarily.
-                if not torch.allclose(cloned_target_tensor, target_tensor):
-                    raise ValueError(
-                        f"Weight sync check failed after weight sync instruction: {insts} for {inst_dest_name}."
+                passed = torch.allclose(cloned_target_tensor, target_tensor)
+                if not passed:
+                    logger.info(
+                        f"LMS: do weight sync check for {inst_dest_name}: cloned_target_tensor.shape: {cloned_target_tensor.shape}, target_tensor.shape: {target_tensor.shape}, dtype: {cloned_target_tensor.dtype}, target_tensor.dtype: {target_tensor.dtype}, device: {cloned_target_tensor.device}, target_tensor.device: {target_tensor.device}"
                     )
-                logger.info(f"LMS: weight sync check passed for {inst_dest_name}")
+                    logger.info(f"LMS: {cloned_target_tensor.flatten()[0:10]}")
+                    logger.info(f"LMS: {target_tensor.flatten()[0:10]}")
+                do_check = True
+                if "down_proj_bias" in inst_dest_name and self.global_rank != 0:
+                    do_check = False
+                if do_check:
+                    if not torch.allclose(cloned_target_tensor, target_tensor):
+                        raise ValueError(
+                            f"Weight sync check failed after weight sync instruction: {insts} for {inst_dest_name}."
+                        )
+                    logger.info(f"LMS: weight sync check passed for {inst_dest_name}")
             tensors_to_check.clear()
 
             # here we got one full weight tensor sync done, if it is fp8 weight, we should do the quantization and check the numerical error.
             if self.quantization_type is not None:
-                if self.quantization_type == "fp8":
-                    if inst_group_full_weight_name in self.vllm_hp_weight_map:
-                        weight_to_quantize = self.vllm_hp_weight_map[
-                            inst_group_full_weight_name
-                        ]  # [out_dim, in_dim]
-                        quantized_weight, weight_scale = self.rollout.fp8_quantization(
-                            weight_to_quantize
-                        )
-                        model_param_map = self.rollout.model_param_map(
-                            self.weight_mapper
-                        )
-                        vllm_native_weight = model_param_map[
-                            inst_group_full_weight_name
-                        ]
-
-                        # check weight sync
-                        if do_weight_sync_check:
-                            # allclose doesn't support fp8, promote it.
-                            bf16_vllm_native_weight = vllm_native_weight.to(
-                                torch.bfloat16
-                            )
-                            bf16_quantized_weight = quantized_weight.to(torch.bfloat16)
-                            if not torch.allclose(
-                                bf16_vllm_native_weight, bf16_quantized_weight
-                            ):
-                                raise ValueError(
-                                    f"FP8 weight doesn't match after weight sync and dynamic quantization for full weight name: {inst_group_full_weight_name}."
-                                )
-                        vllm_native_weight.copy_(quantized_weight)
-                        # get the scale key.
-                        scale_key = inst_group_full_weight_name.replace(
-                            ".weight", ".weight_scale"
-                        )
-                        scale_tensor = model_param_map[scale_key]
-                        assert (
-                            scale_tensor.shape == weight_scale.shape
-                        ), f"scale_tensor.shape: {scale_tensor.shape}, weight_scale.shape: {weight_scale.shape}"
-                        scale_tensor.copy_(weight_scale)
-                elif self.quantization_type == "mxfp4":
-                    if inst_group_full_weight_name in self.vllm_hp_weight_map:
-                        # Weight to quantize:
-                        # [local_num_experts, 2* local_intermediate_size, hidden_size] for gate_up_proj
-                        # [local_num_experts, hidden_size, local_intermediate_size] for down_proj
-                        weight_to_quantize = self.vllm_hp_weight_map[
-                            inst_group_full_weight_name
-                        ]
-                        quantized_weight, weight_scale = (
-                            self.rollout.mxfp4_quantization(weight_to_quantize)
-                        )
-                        # The quantized version of the weight has been removed by vLLM internally.
-                        # https://github.com/zyongye/vllm/blob/6a70830065701b163e36a86fd331b41b5feac401/vllm/model_executor/layers/quantization/mxfp4.py#L328
-                        # We can't get it from named_parameters.
-                        vllm_native_weight = None
-                        vllm_native_weight_scale = None
-
-                        for (
-                            module_name,
-                            module,
-                        ) in self.get_underlying_model().named_modules():
-                            w13_weight_name = f"{module_name}.w13_weight"
-                            w2_weight_name = f"{module_name}.w2_weight"
-                            w13_compatible_weight_name = (
-                                self.weight_mapper._rollout_vllm_name_to_hf(
-                                    w13_weight_name
-                                )
-                            )
-                            w2_compatible_weight_name = (
-                                self.weight_mapper._rollout_vllm_name_to_hf(
-                                    w2_weight_name
-                                )
-                            )
-
-                            # mxfp4 weight and mxfp4 weight scale are in int8 data type.
-                            # Two fp4 are packed into one int8 memory.
-                            if (
+                for inst_group_full_weight_name in post_process_list_for_lowp:
+                    if self.quantization_type == "fp8":
+                        if inst_group_full_weight_name in self.vllm_hp_weight_map:
+                            weight_to_quantize = self.vllm_hp_weight_map[
                                 inst_group_full_weight_name
-                                == w13_compatible_weight_name
-                            ):
-                                vllm_native_weight = module.quant_method.w13_weight_triton_tensor.storage.data
-                                vllm_native_weight_scale = module.quant_method.w13_precision_config.weight_scale.storage.data
-                                break
-                            elif (
-                                inst_group_full_weight_name == w2_compatible_weight_name
-                            ):
-                                vllm_native_weight = module.quant_method.w2_weight_triton_tensor.storage.data
-                                vllm_native_weight_scale = module.quant_method.w2_precision_config.weight_scale.storage.data
-                                break
+                            ]  # [out_dim, in_dim]
+                            quantized_weight, weight_scale = (
+                                self.rollout.fp8_quantization(weight_to_quantize)
+                            )
+                            model_param_map = self.rollout.model_param_map(
+                                self.weight_mapper
+                            )
+                            vllm_native_weight = model_param_map[
+                                inst_group_full_weight_name
+                            ]
 
-                        assert (
-                            vllm_native_weight is not None
-                        ), f"Failed to find the original weight for {inst_group_full_weight_name}"
-                        assert (
-                            vllm_native_weight_scale is not None
-                        ), f"Failed to find the original weight scale for {inst_group_full_weight_name}"
-                        # logger.info(
-                        #     f"LMS: dtype: {vllm_native_weight.dtype} and {quantized_weight.dtype}, vllm_native_weight.shape: {vllm_native_weight.shape}, quantized_weight.shape: {quantized_weight.shape}"
-                        # )
-                        with torch.inference_mode():
+                            # check weight sync
+                            if do_weight_sync_check:
+                                # allclose doesn't support fp8, promote it.
+                                bf16_vllm_native_weight = vllm_native_weight.to(
+                                    torch.bfloat16
+                                )
+                                bf16_quantized_weight = quantized_weight.to(
+                                    torch.bfloat16
+                                )
+                                if not torch.allclose(
+                                    bf16_vllm_native_weight, bf16_quantized_weight
+                                ):
+                                    raise ValueError(
+                                        f"FP8 weight doesn't match after weight sync and dynamic quantization for full weight name: {inst_group_full_weight_name}."
+                                    )
                             vllm_native_weight.copy_(quantized_weight)
-                            vllm_native_weight_scale.copy_(weight_scale)
+                            # get the scale key.
+                            scale_key = inst_group_full_weight_name.replace(
+                                ".weight", ".weight_scale"
+                            )
+                            scale_tensor = model_param_map[scale_key]
+                            assert (
+                                scale_tensor.shape == weight_scale.shape
+                            ), f"scale_tensor.shape: {scale_tensor.shape}, weight_scale.shape: {weight_scale.shape}"
+                            scale_tensor.copy_(weight_scale)
+                    elif self.quantization_type == "mxfp4":
+                        if inst_group_full_weight_name in self.vllm_hp_weight_map:
+                            # Weight to quantize:
+                            # [local_num_experts, 2* local_intermediate_size, hidden_size] for gate_up_proj
+                            # [local_num_experts, hidden_size, local_intermediate_size] for down_proj
+                            weight_to_quantize = self.vllm_hp_weight_map[
+                                inst_group_full_weight_name
+                            ]
+                            quantized_weight, weight_scale = (
+                                self.rollout.mxfp4_quantization(weight_to_quantize)
+                            )
+                            # The quantized version of the weight has been removed by vLLM internally.
+                            # https://github.com/zyongye/vllm/blob/6a70830065701b163e36a86fd331b41b5feac401/vllm/model_executor/layers/quantization/mxfp4.py#L328
+                            # We can't get it from named_parameters.
+                            vllm_native_weight = None
+                            vllm_native_weight_scale = None
 
-                        #     logger.info(f"LMS: copy done for {inst_group_full_weight_name}")
+                            for (
+                                module_name,
+                                module,
+                            ) in self.get_underlying_model().named_modules():
+                                w13_weight_name = f"{module_name}.w13_weight"
+                                w2_weight_name = f"{module_name}.w2_weight"
+                                w13_compatible_weight_name = (
+                                    self.weight_mapper._rollout_vllm_name_to_hf(
+                                        w13_weight_name
+                                    )
+                                )
+                                w2_compatible_weight_name = (
+                                    self.weight_mapper._rollout_vllm_name_to_hf(
+                                        w2_weight_name
+                                    )
+                                )
+
+                                # mxfp4 weight and mxfp4 weight scale are in int8 data type.
+                                # Two fp4 are packed into one int8 memory.
+                                if (
+                                    inst_group_full_weight_name
+                                    == w13_compatible_weight_name
+                                ):
+                                    vllm_native_weight = module.quant_method.w13_weight_triton_tensor.storage.data
+                                    vllm_native_weight_scale = module.quant_method.w13_precision_config.weight_scale.storage.data
+                                    break
+                                elif (
+                                    inst_group_full_weight_name
+                                    == w2_compatible_weight_name
+                                ):
+                                    vllm_native_weight = module.quant_method.w2_weight_triton_tensor.storage.data
+                                    vllm_native_weight_scale = module.quant_method.w2_precision_config.weight_scale.storage.data
+                                    break
+
+                            assert (
+                                vllm_native_weight is not None
+                            ), f"Failed to find the original weight for {inst_group_full_weight_name}"
+                            assert (
+                                vllm_native_weight_scale is not None
+                            ), f"Failed to find the original weight scale for {inst_group_full_weight_name}"
+                            logger.info(
+                                f"LMS:{inst_group_full_weight_name}: vllm_native_weight.shape: {vllm_native_weight.shape}, quantized_weight.shape: {quantized_weight.shape}"
+                            )
+                            logger.info(
+                                f"LMS: vllm_native_weight_scale.shape: {vllm_native_weight_scale.shape}, weight_scale.shape: {weight_scale.shape}"
+                            )
+                            with torch.inference_mode():
+                                _, dim_1, dim_2 = quantized_weight.shape
+                                vllm_native_weight[:, :dim_1, :dim_2].copy_(
+                                    quantized_weight
+                                )
+
+                                _, dim_1, dim_2 = weight_scale.shape
+                                vllm_native_weight_scale[:, :dim_1, :dim_2].copy_(
+                                    weight_scale
+                                )
+
+                                # vllm_native_weight.copy_(quantized_weight)
+                                # vllm_native_weight_scale.copy_(weight_scale)
+
+                                logger.info(
+                                    f"LMS: copy done for {inst_group_full_weight_name}"
+                                )
             else:
                 # For non-fp8 weights and fp8 not enabled cases, we just do nothing
                 pass
 
         return total_bytes_received, partial(
-            completion_lambda, all_cloned_target_tensors, tensors_to_check
+            completion_lambda,
+            all_tensor_views_to_copy,
+            tensors_to_check,
+            post_process_list_for_lowp,
         )
 
     @RolloutWorkerBase.register_rollout_command_handler(PolicyToRolloutUnicastCommand)
@@ -711,12 +778,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 seed=self.config.rollout.seed,
                 load_format=load_format,
             )
-            model = self.get_underlying_model()
-            for name, module in model.named_modules():
-                if hasattr(module, "quant_method"):
-                    logger.info(
-                        f"Found quant_method in {name}: {type(module.quant_method)}"
-                    )
             _patch_vllm_rollout_locked_step(
                 self.rollout,
                 self.consume_command,

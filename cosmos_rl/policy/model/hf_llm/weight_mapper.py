@@ -229,7 +229,7 @@ class HFLLMWeightMapper(WeightMapper):
         for key in ["q_proj", "k_proj", "v_proj"]:
             if key in weight_key:
                 return weight_key.replace(key, "qkv_proj")
-        for key in ["gate_proj", "up_proj"]:
+        for key in ["gate_proj.weight", "up_proj.weight"]:
             if key in weight_key:
-                return weight_key.replace(key, "gate_up_proj")
+                return weight_key.replace(key, "gate_up_proj.weight")
         return weight_key  # return full weight key
