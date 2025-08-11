@@ -931,6 +931,134 @@
 <tr class="row-odd"><td><p>type</p></td>
 <td colspan="2"><p><em>null</em></p></td>
 </tr>
+<tr class="row-even"><td rowspan="36"><ul class="simple">
+<li><p>LoraConfig</p></li>
+</ul>
+</td>
+<td colspan="5"><p><em>LoraConfig</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="4"><p><em>object</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="5"><p>properties</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="4"><ul class="simple">
+<li><p>r</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>R</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="4"><p>LoRA rank</p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="3"><p><em>integer</em></p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>8</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="4"><ul class="simple">
+<li><p>lora_alpha</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Lora Alpha</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="4"><p>LoRA alpha</p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="3"><p><em>number</em></p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>8.0</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="4"><ul class="simple">
+<li><p>lora_dropout</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Lora Dropout</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="4"><p>LoRA dropout</p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="3"><p><em>number</em></p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>0.0</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="5"><ul class="simple">
+<li><p>target_modules</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Target Modules</em></p></td>
+</tr>
+<tr class="row-even"><td colspan="4"><p>LoRA target modules</p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="3"><p><em>array</em></p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td><p>items</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>string</em></p></td>
+</tr>
+<tr class="row-even"><td rowspan="4"><ul class="simple">
+<li><p>use_rslora</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Use Rslora</em></p></td>
+</tr>
+<tr class="row-odd"><td colspan="4"><p>When set to True, uses [Rank-Stabilized LoRA](<a class="reference external" href="https://huggingface.co/papers/2312.03732">https://huggingface.co/papers/2312.03732</a>) which sets the adapter scaling factor to <cite>lora_alpha/math.sqrt(r)</cite>, since it was proven to work better. Otherwise, it will use the original default value of <cite>lora_alpha/r</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p>type</p></td>
+<td colspan="3"><p><em>boolean</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>default</p></td>
+<td colspan="3"><p>False</p></td>
+</tr>
+<tr class="row-even"><td rowspan="6"><ul class="simple">
+<li><p>modules_to_save</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Modules To Save</em></p></td>
+</tr>
+<tr class="row-odd"><td colspan="4"><p>List of modules apart from LoRA layers to be set as trainable and saved in the final checkpoint.</p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="3"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>array</em></p></td>
+</tr>
+<tr class="row-even"><td><p>items</p></td>
+<td><p>type</p></td>
+<td><p><em>string</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>type</p></td>
+<td colspan="2"><p><em>null</em></p></td>
+</tr>
+<tr class="row-even"><td rowspan="6"><ul class="simple">
+<li><p>init_lora_weights</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Init Lora Weights</em></p></td>
+</tr>
+<tr class="row-odd"><td colspan="4"><p>How to initialize the weights of the adapter layers.Passing True (default) results in the default initialization from the reference implementation from Microsoft, with the LoRA B weight being set to 0. This means that without further training, the LoRA adapter will be a no-op.Setting the initialization to False leads to random initialization of LoRA A and B, meaning that LoRA is not a no-op before training; this setting is intended for debugging purposes.Passing ‘gaussian’ results in Gaussian initialization scaled by the LoRA rank for linear and layers. Pass ‘loftq’ to use LoftQ initialization. Passing ‘eva’ results in a data-driven initialization of Explained Variance Adaptation.EVA initializes LoRA based on the SVD of layer input activations and achieves SOTA performance due to its ability to adapt to the finetuning data. Pass ‘olora’ to use OLoRA initialization. Passing ‘pissa’ results in the initialization of <a class="reference external" href="https://huggingface.co/papers/2404.02948">https://huggingface.co/papers/2404.02948</a></p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>True</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="3"><p>anyOf</p></td>
+<td><p>type</p></td>
+<td colspan="2"><p><em>boolean</em></p></td>
+</tr>
+<tr class="row-even"><td><p>type</p></td>
+<td colspan="2"><p><em>string</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>enum</p></td>
+<td colspan="2"><p>gaussian, eva, olora, pissa, pissa_niter_[number of iters]</p></td>
+</tr>
 <tr class="row-even"><td rowspan="15"><ul class="simple">
 <li><p>OverlongRewardConfig</p></li>
 </ul>
@@ -1121,7 +1249,7 @@
 <tr class="row-odd"><td><p>default</p></td>
 <td colspan="3"><p>1</p></td>
 </tr>
-<tr class="row-even"><td rowspan="21"><ul class="simple">
+<tr class="row-even"><td rowspan="25"><ul class="simple">
 <li><p>PolicyConfig</p></li>
 </ul>
 </td>
@@ -1197,6 +1325,21 @@
 </tr>
 <tr class="row-even"><td><p>default</p></td>
 <td colspan="3"><p>True</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="4"><ul class="simple">
+<li><p>lora</p></li>
+</ul>
+</td>
+<td colspan="4"><p>LoRA configuration</p></td>
+</tr>
+<tr class="row-even"><td><p>default</p></td>
+<td colspan="3"><p>None</p></td>
+</tr>
+<tr class="row-odd"><td rowspan="2"><p>anyOf</p></td>
+<td colspan="3"><p><span class="xref std std-ref">#/$defs/LoraConfig</span></p></td>
+</tr>
+<tr class="row-even"><td><p>type</p></td>
+<td colspan="2"><p><em>null</em></p></td>
 </tr>
 <tr class="row-odd"><td rowspan="13"><ul class="simple">
 <li><p>ProfilerConfig</p></li>
