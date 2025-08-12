@@ -81,7 +81,8 @@ class BaseModel(torch.nn.Module, ABC):
     def weight_sync_transforms(
         self,
     ) -> List[Tuple[str, Union[torch.Tensor, Callable]]]:
-        from cosmos_rl.utils.parallelism_map import DimSliceInfo, ParallelTopoMapper
+        from cosmos_rl.utils.parallelism_map import ParallelTopoMapper
+        from cosmos_rl.utils.dim_slice_info import DimSliceInfo
 
         # 1. get all parameters, but not buffers
         transforms = self.get_local_view_transforms()

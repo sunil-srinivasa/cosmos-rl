@@ -667,13 +667,13 @@ class GRPOTrainer(Trainer):
     @Trainer.register_policy_command_handler(PolicyToRolloutUnicastCommand)
     def execute_policy_to_rollout_unicast(self, command: PolicyToRolloutUnicastCommand):
         assert command.src_replica_size == self.world_size
-        for name, param in self.model.named_parameters():
-            if isinstance(param, torch.distributed.tensor.DTensor):
-                param = param.to_local()
+        # for name, param in self.model.named_parameters():
+        #     if isinstance(param, torch.distributed.tensor.DTensor):
+        #         param = param.to_local()
 
-            logger.info(
-                f"LMS: Policy param: {name}: {param.shape}, {param.dtype}, {param.device}, {param.flatten()[0:10]}"
-            )
+        # logger.info(
+        #     f"LMS: Policy param: {name}: {param.shape}, {param.dtype}, {param.device}, {param.flatten()[0:10]}"
+        # )
         if not command.src_replica_name == self.replica_name:
             logger.error(
                 f"Policy {self.replica_name} received P2R command from {command.src_replica_name}, but it is not the source replica."
@@ -771,15 +771,15 @@ class GRPOTrainer(Trainer):
                 def grouped_send(grouped_send_ops):
                     nccl_group_start(comm_id)
                     for view, r_rank, name in grouped_send_ops:
-                        logger.info(
-                            f"LMS: sending: {name}: {view.shape} to rollout rank {r_rank}, , dtype: {view.dtype}, {view.flatten()[0:10]}"
-                        )
+                        # logger.info(
+                        #     f"LMS: sending: {name}: {view.shape} to rollout rank {r_rank}, , dtype: {view.dtype}, {view.flatten()[0:10]}"
+                        # )
                         nccl_send(
                             view,
                             self.world_size + r_rank,
                             comm_id,
                         )
-                        logger.info(f"LMS: sending done: {name}")
+                        # logger.info(f"LMS: sending done: {name}")
                     nccl_group_end(comm_id)
                     grouped_send_ops.clear()
 

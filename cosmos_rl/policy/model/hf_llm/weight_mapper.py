@@ -126,6 +126,12 @@ class HFLLMWeightMapper(WeightMapper):
                 vllm_weight_inplace_view_map[up_proj_weight_key] = up_proj_weight
                 group_keys.append((up_proj_weight_key, up_proj_weight.ndim))
             else:
+                if "gate_up_proj_bias" in compatible_key:
+                    from cosmos_rl.utils.logging import logger
+
+                    logger.info(
+                        f"LMS: gate_up_proj_bias: {compatible_key}, shape: {param.shape}, dtype: {param.dtype}, device: {param.device}"
+                    )
                 vllm_weight_inplace_view_map[compatible_key] = param
                 group_keys.append((compatible_key, param.ndim))
 

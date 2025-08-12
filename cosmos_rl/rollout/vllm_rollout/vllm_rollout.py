@@ -292,10 +292,6 @@ class vLLMRollout(RolloutBase):
         # [num_experts, 2 * intermediate_size, hidden_size // mxfp4_block_size] for gate_up_proj
         # [num_experts, hidden_size, intermediate_size // mxfp4_block_size] for down_proj
 
-        # logger.info(
-        #     f"LMS: P2R weight shape: {weight.shape}, weight_mxfp4.shape: {weight_mxfp4.shape}, weight_scale_mxfp4.shape: {weight_scale_mxfp4.shape}"
-        # )
-
         # 2. Post process
         from vllm.model_executor.layers.quantization.utils.mxfp4_utils import (
             _swizzle_mxfp4,
