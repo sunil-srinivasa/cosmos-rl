@@ -62,7 +62,6 @@ def cache_weight_of_quantized_module(
         if quant_method is None:
             continue
         elif isinstance(quant_method, Mxfp4MoEMethod):
-            # FIXME: (lms) Bias also should be cached.
             assert isinstance(
                 module, FusedMoE
             ), "Mxfp4MoEMethod should be used with FusedMoE"

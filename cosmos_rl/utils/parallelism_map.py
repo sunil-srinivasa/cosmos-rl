@@ -840,14 +840,17 @@ class ParallelTopoMapper:
                 ), f"VocabParallelEmbedding {param_name} should not have bias."
                 dims_map["tp"] = output_dim
             elif isinstance(part, FusedMoE):
-                # This temporarily for mxfp4 gpt-oss model.
+                assert (
+                    self.hf_config.model_type == "gpt_oss"
+                ), "Auto parallelism for FusedMoE is only supported for gpt-oss model."
+                # This temporarily for mxfp4 gpt-oss model. un-even sharding.
                 dims_rank_info, tp_dim = genereate_dim_rank_info(
                     part, param_name, param, self.hf_config, self.parallelism
                 )
                 if tp_dim > 0:
                     dims_map["tp"] = tp_dim
                 packed_modules_mapping = {}
-            elif isinstance(part, OAIAttention):
+            elif isinstance(part, OAIAttention):  # gpt-oss attention
                 if "sinks" in param_name:
                     dims_map["tp"] = 0  # sinks has shape [num_heads]
             else:

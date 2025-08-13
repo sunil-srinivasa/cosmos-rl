@@ -19,6 +19,7 @@ from typing import List, Tuple, Dict, Any
 from cosmos_rl.policy.model.base import WeightMapper
 from cosmos_rl.utils import util
 from transformers import AutoConfig
+from cosmos_rl.utils.parallelism import ParallelDims
 
 
 class HFLLMWeightMapper(WeightMapper):
@@ -53,7 +54,6 @@ class HFLLMWeightMapper(WeightMapper):
                 return rollout_weight_name.replace("w13_bias", "gate_up_proj_bias")
             elif "w2_bias" in rollout_weight_name:
                 return rollout_weight_name.replace("w2_bias", "down_proj_bias")
-            # FIXME: (lms) sinks should be added later.
             else:
                 pass
 
@@ -89,9 +89,6 @@ class HFLLMWeightMapper(WeightMapper):
         for param_name, param in vllm_model.named_parameters():
             group_keys = []
             compatible_key = self._rollout_vllm_name_to_hf(param_name)
-            # logger.info(
-            #     f"[Rollout] compatible_key: {param_name=}, {compatible_key=}, shape: {param.shape}, dtype: {param.dtype}, device: {param.device}"
-            # )
             if any(rule in compatible_key for rule in ["qkv_proj", "qkv"]):
                 # must be inplace slicing.
                 # split qkv weight
@@ -234,3 +231,13 @@ class HFLLMWeightMapper(WeightMapper):
             if key in weight_key:
                 return weight_key.replace(key, "gate_up_proj.weight")
         return weight_key  # return full weight key
+
+    def weight_sync_check_filter(self, parallel_dims: ParallelDims, name: str) -> bool:
+        """
+        Sometimes we want to skip some weight sync check for certain weights or certain ranks.
+        """
+        if "gpt_oss" in self.config.model_type:
+            tp_rank, _ = parallel_dims.tp_coord
+            if "down_proj_bias" in name and tp_rank != 0:
+                return False
+        return True

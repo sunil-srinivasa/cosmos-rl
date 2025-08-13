@@ -58,7 +58,6 @@ class BaseModel(torch.nn.Module, ABC):
     def post_transform_of_local_view(self, local_view: torch.Tensor, name: str):
         return local_view
 
-
     def get_local_view_transforms(self):
         # 1. get all parameters, but not buffers
         named_parameters = {name: param for name, param in self.named_parameters()}
@@ -661,3 +660,9 @@ class WeightMapper(ABC):
         Each tuple element includes a transformed tensor and its corresponding slice strategy to derive from the original tensor.
         """
         return []
+
+    def weight_sync_check_filter(self, parallel_dims: ParallelDims, name: str) -> bool:
+        """
+        Sometimes we want to skip some weight sync check for certain weights or certain ranks.
+        """
+        return True

@@ -603,9 +603,10 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 insts,
                 inst_dest_name,
             ) in tensors_to_check:
-                do_check = True
-                if "down_proj_bias" in inst_dest_name and self.global_rank != 0:
-                    do_check = False
+                # Some corner cases that we should not do weight sync check.
+                do_check = self.weight_mapper.weight_sync_check_filter(
+                    self.parallel_dims, inst_dest_name
+                )
                 if do_check:
                     if not torch.allclose(cloned_target_tensor, target_tensor):
                         raise ValueError(
@@ -657,6 +658,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                             ), f"scale_tensor.shape: {scale_tensor.shape}, weight_scale.shape: {weight_scale.shape}"
                             scale_tensor.copy_(weight_scale)
                     elif self.quantization_type == "mxfp4":
+                        # Note: For mxfp4, we don't do weight sync check for quantized weights.
                         if inst_group_full_weight_name in self.vllm_hp_weight_map:
                             if "gate_up_proj_bias" not in inst_group_full_weight_name:
                                 # Weight to quantize:
