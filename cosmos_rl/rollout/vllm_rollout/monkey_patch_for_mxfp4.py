@@ -147,7 +147,6 @@ def cache_weight_of_quantized_module(
             hp_weight_map[w13_bias_compatible_name] = Parameter(
                 w13_bias_hp_weight, requires_grad=False
             )
-            # logger.info(f"LMS: w13_hp_weight.shape: {w13_hp_weight.shape}, w2_hp_weight.shape: {w2_hp_weight.shape}, w13_bias_hp_weight.shape: {w13_bias_hp_weight.shape}")
         else:
             # We will not handle other quant methods.
             pass

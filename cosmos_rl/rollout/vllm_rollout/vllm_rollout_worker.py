@@ -559,9 +559,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
 
             if check_inside_group:
                 cloned_target_tensor = target_tensor.clone()
-                # logger.info(
-                #     f"LMS: inst_dest_name: {inst_dest_name}, shape: {cloned_target_tensor.shape}, {cloned_target_tensor.flatten()[0:10]}"
-                # )
                 # clear the current view
                 target_tensor.zero_()
 
@@ -574,9 +571,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
 
                 recv_tensor, inplace = recv_tensor_creator(vllm_tensor_view)
 
-                # logger.info(
-                #     f"Recving tensor {inst_dest_name} from policy rank {p_rank}:{r_rank}, inplace: {inplace}, shape {vllm_tensor_view.shape} of {target_tensor.shape}."
-                # )
                 nccl_recv(recv_tensor, p_rank, communicator_index)
 
                 # inplace copy
@@ -599,9 +593,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
             all_tensor_views_to_copy, tensors_to_check, post_process_list_for_lowp
         ):
             for view, recv_tensor, inplace, inst_dest_name in all_tensor_views_to_copy:
-                # logger.info(
-                #     f"LMS: recving done: inplace: {inplace}, {inst_dest_name}: {recv_tensor.flatten()[0:10]}, {view.flatten()[0:10]}"
-                # )
                 update_tensor_view(view, recv_tensor, inplace, inst_dest_name)
 
             all_tensor_views_to_copy.clear()
@@ -612,13 +603,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 insts,
                 inst_dest_name,
             ) in tensors_to_check:
-                # passed = torch.allclose(cloned_target_tensor, target_tensor)
-                # if not passed:
-                #     logger.info(
-                #         f"LMS: do weight sync check for {inst_dest_name}: cloned_target_tensor.shape: {cloned_target_tensor.shape}, target_tensor.shape: {target_tensor.shape}, dtype: {cloned_target_tensor.dtype}, target_tensor.dtype: {target_tensor.dtype}, device: {cloned_target_tensor.device}, target_tensor.device: {target_tensor.device}"
-                #     )
-                #     logger.info(f"LMS: {cloned_target_tensor.flatten()[0:10]}")
-                #     logger.info(f"LMS: {target_tensor.flatten()[0:10]}")
                 do_check = True
                 if "down_proj_bias" in inst_dest_name and self.global_rank != 0:
                     do_check = False
@@ -730,29 +714,19 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                                 assert (
                                     vllm_native_weight_scale is not None
                                 ), f"Failed to find the original weight scale for {inst_group_full_weight_name}"
-                                # logger.info(
-                                #     f"LMS:{inst_group_full_weight_name}: vllm_native_weight.shape: {vllm_native_weight.shape}, quantized_weight.shape: {quantized_weight.shape}"
-                                # )
-                                # logger.info(
-                                #     f"LMS: vllm_native_weight_scale.shape: {vllm_native_weight_scale.shape}, weight_scale.shape: {weight_scale.shape}"
-                                # )
+
                                 with torch.inference_mode():
                                     _, dim_1, dim_2 = quantized_weight.shape
+                                    # valid_native_weight = vllm_native_weight[:, :dim_1, :dim_2]
                                     vllm_native_weight[:, :dim_1, :dim_2].copy_(
                                         quantized_weight
                                     )
 
                                     _, dim_1, dim_2 = weight_scale.shape
+                                    # valid_native_weight_scale = vllm_native_weight_scale[:, :dim_1, :dim_2]
                                     vllm_native_weight_scale[:, :dim_1, :dim_2].copy_(
                                         weight_scale
                                     )
-
-                                    # vllm_native_weight.copy_(quantized_weight)
-                                    # vllm_native_weight_scale.copy_(weight_scale)
-
-                                    # logger.info(
-                                    #     f"LMS: copy done for {inst_group_full_weight_name}"
-                                    # )
                             else:
                                 # For w13_bias, no need to quant, just copy the weight.
                                 w13_bias_hp_weight = self.vllm_hp_weight_map[
@@ -800,7 +774,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 self.config.train.enable_validation,
             )
             self.prepare_shard_infos_for_weight_sync_insts()
-
         if command.dst_replica_name != self.replica_name:
             return
         # get the nccl_unique_id from the controller
@@ -1198,7 +1171,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
     def main_loop(self):
         while not self.shutdown_signal.is_set():
             self.consume_command(cmd_pred=None)
-
             # If weight is not ready, nothing else to do.
             if not self.state.weight_synced():
                 continue

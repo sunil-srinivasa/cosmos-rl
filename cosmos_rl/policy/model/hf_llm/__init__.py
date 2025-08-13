@@ -17,10 +17,12 @@ import torch
 from torch import nn
 from typing import Tuple, List, Optional, Callable
 from transformers import AutoConfig, AutoModelForCausalLM
+from transformers.utils.quantization_config import Mxfp4Config
+from functools import partial
+
 from cosmos_rl.utils.util import (
     sync_model_vocab,
     clear_weight_name,
-    retry,
 )
 from cosmos_rl.utils.constant import COSMOS_HF_MODEL_TYPES
 from cosmos_rl.policy.model.base import BaseModel, ModelRegistry
@@ -146,11 +148,19 @@ class HFLLMModel(BaseModel):
             parallel_dims (ParallelDims): Parallel dimensions definition.
             info_inly (bool): Only collect the tensor infomation without actual data loading.
         """
-        model_type = retry(AutoConfig.from_pretrained)(model_name_or_path).model_type
+        quantization_config = self.hf_config.quantization_config
+        model_type = self.hf_config.model_type
+        if "gpt_oss" in model_type:
+            cosmos_quantization_config = Mxfp4Config(
+                dequantize=True,
+                modules_to_not_convert=quantization_config["modules_to_not_convert"],
+            )
         model_with_weights = AutoModelForCausalLM.from_pretrained(
-            model_name_or_path, revision=revision
-        ).to(device)
-        state_dict = model_with_weights.state_dict()
+            model_name_or_path,
+            revision=revision,
+            quantization_config=cosmos_quantization_config,
+        ).to("cpu")
+        hf_state_dict = model_with_weights.state_dict()
         self_state_dict = self.model.state_dict()
         self_state_dict = {clear_weight_name(k): v for k, v in self_state_dict.items()}
         all_tensor_names = self_state_dict.keys()
@@ -158,7 +168,7 @@ class HFLLMModel(BaseModel):
         embed_tokens_weight_key = "model.embed_tokens.weight"
         reserved = {}
 
-        for name, tensor in state_dict.items():
+        for name, tensor in hf_state_dict.items():
             if name == embed_tokens_weight_key:
                 reserved[name] = tensor
             dest_name, shared_weight = convert_weight_from_hf(
@@ -172,7 +182,7 @@ class HFLLMModel(BaseModel):
                 local_view.shape == shared_weight.shape
             ), f"Shape mismatch: {local_view.shape} != {shared_weight.shape} for {dest_name}"
             with torch.no_grad():
-                local_view.data.copy_(shared_weight)
+                local_view.data.copy_(shared_weight.to(local_view.dtype).to(device))
 
         if (
             lm_head_weight_key not in all_tensor_names
@@ -197,7 +207,8 @@ class HFLLMModel(BaseModel):
                     local_view.shape == shared_weight.shape
                 ), f"Shape mismatch: {local_view.shape} != {shared_weight.shape} for {dest_name}"
                 with torch.no_grad():
-                    local_view.data.copy_(shared_weight)
+                    local_view.data.copy_(shared_weight.to(local_view.dtype).to(device))
+        del model_with_weights
 
     def get_position_ids(self, **kwargs) -> Tuple[torch.Tensor, torch.Tensor, int]:
         seq_dim_idx = 1
@@ -253,6 +264,8 @@ class HFLLMModel(BaseModel):
             HFLLMModel: HFLLM model.
 
         """
+        if "gpt_oss" in hf_config.model_type:
+            hf_config.quantization_config["dequantize"] = True
         model = AutoModelForCausalLM.from_config(hf_config)
         return cls(hf_config, model)
 
@@ -301,7 +314,11 @@ class HFLLMModel(BaseModel):
         if self.hf_config.model_type == "gpt_oss":
             if "bias" not in name:  # bias is not transposed
                 if "gate_up_proj" in name or "down_proj" in name:
-                    return local_view.transpose(-2, -1).contiguous()
+
+                    def transform(view):
+                        return view.transpose(-2, -1).contiguous()
+
+                    return partial(transform, local_view)
                 else:
                     return local_view
             return local_view

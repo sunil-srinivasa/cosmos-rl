@@ -61,6 +61,7 @@ class HFLLMWeightMapper(WeightMapper):
 
     def _rollout_split_qkv_weight(self, name, weight: torch.Tensor):
         # weight has shape [q_num_heads * head_dim + k_num_heads * head_dim + v_num_heads * head_dim, hidden_dim]
+        # bias has shape [(q_num_heads + k_num_heads + v_num_heads) * head_dim]
         shares = self.kv_head_ratio + 2
         dim_0 = weight.shape[0]  # for both weight and bias
         unit_dim = dim_0 // shares
@@ -126,12 +127,6 @@ class HFLLMWeightMapper(WeightMapper):
                 vllm_weight_inplace_view_map[up_proj_weight_key] = up_proj_weight
                 group_keys.append((up_proj_weight_key, up_proj_weight.ndim))
             else:
-                if "gate_up_proj_bias" in compatible_key:
-                    from cosmos_rl.utils.logging import logger
-
-                    logger.info(
-                        f"LMS: gate_up_proj_bias: {compatible_key}, shape: {param.shape}, dtype: {param.dtype}, device: {param.device}"
-                    )
                 vllm_weight_inplace_view_map[compatible_key] = param
                 group_keys.append((compatible_key, param.ndim))
 
