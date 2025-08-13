@@ -26,7 +26,7 @@ from vllm.model_executor.layers.linear import (
     QKVParallelLinear,
     MergedColumnParallelLinear,
 )
-from vllm.model_executor.models.gpt_oss import OAIAttention
+from vllm.model_executor import models as vllm_model_classes
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.vocab_parallel_embedding import VocabParallelEmbedding
 
@@ -36,7 +36,6 @@ from cosmos_rl.utils import util
 import multiprocessing
 from concurrent.futures import ProcessPoolExecutor
 from cosmos_rl.policy.config import Config as CosmosConfig
-from cosmos_rl.utils.mxfp4.quantizer import genereate_dim_rank_info
 from cosmos_rl.utils.dim_slice_info import DimSliceInfo
 
 
@@ -839,20 +838,24 @@ class ParallelTopoMapper:
                     not is_bias
                 ), f"VocabParallelEmbedding {param_name} should not have bias."
                 dims_map["tp"] = output_dim
-            elif isinstance(part, FusedMoE):
-                assert (
-                    self.hf_config.model_type == "gpt_oss"
-                ), "Auto parallelism for FusedMoE is only supported for gpt-oss model."
-                # This temporarily for mxfp4 gpt-oss model. un-even sharding.
-                dims_rank_info, tp_dim = genereate_dim_rank_info(
-                    part, param_name, param, self.hf_config, self.parallelism
-                )
-                if tp_dim > 0:
-                    dims_map["tp"] = tp_dim
-                packed_modules_mapping = {}
-            elif isinstance(part, OAIAttention):  # gpt-oss attention
-                if "sinks" in param_name:
-                    dims_map["tp"] = 0  # sinks has shape [num_heads]
+            elif "gpt_oss" in self.hf_config.model_type:
+                # special cases for gpt-oss model.
+                assert hasattr(
+                    vllm_model_classes, "gpt_oss"
+                ), "gpt-oss is not supported for this version of vllm."
+                from cosmos_rl.utils.mxfp4.quantizer import genereate_dim_rank_info
+
+                if isinstance(part, vllm_model_classes.gpt_oss.OAIAttention):
+                    if "sinks" in param_name:
+                        dims_map["tp"] = 0  # sinks has shape [num_heads]
+                elif isinstance(part, FusedMoE):
+                    # This temporarily for mxfp4 gpt-oss model. un-even sharding.
+                    dims_rank_info, tp_dim = genereate_dim_rank_info(
+                        part, param_name, param, self.hf_config, self.parallelism
+                    )
+                    if tp_dim > 0:
+                        dims_map["tp"] = tp_dim
+                    packed_modules_mapping = {}
             else:
                 assert (
                     "Parallel" not in part.__class__.__name__

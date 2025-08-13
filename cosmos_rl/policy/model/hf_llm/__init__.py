@@ -17,7 +17,7 @@ import torch
 from torch import nn
 from typing import Tuple, List, Optional, Callable
 from transformers import AutoConfig, AutoModelForCausalLM
-from transformers.utils.quantization_config import Mxfp4Config
+from transformers.utils import quantization_config as transformers_quantization_config
 from functools import partial
 
 from cosmos_rl.utils.util import (
@@ -151,7 +151,10 @@ class HFLLMModel(BaseModel):
         quantization_config = self.hf_config.quantization_config
         model_type = self.hf_config.model_type
         if "gpt_oss" in model_type:
-            cosmos_quantization_config = Mxfp4Config(
+            assert hasattr(
+                transformers_quantization_config, "Mxfp4Config"
+            ), "Mxfp4Config is not supported for this version of transformers."
+            cosmos_quantization_config = transformers_quantization_config.Mxfp4Config(
                 dequantize=True,
                 modules_to_not_convert=quantization_config["modules_to_not_convert"],
             )

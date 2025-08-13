@@ -1222,6 +1222,8 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                     data_packer=self.data_packer,
                     sampling_params=self.sampling_params,
                 )
+                # if self.global_rank == 0:
+                #     logger.info(f"[Rollout] prompt: {prompts[0][1]}, completions: {completions[0][0]}")
                 # Remove empty completions
                 valid_completions: List[List[str]] = []
                 prompt_indices_to_remove: List[int] = []
