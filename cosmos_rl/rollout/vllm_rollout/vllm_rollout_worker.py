@@ -586,7 +586,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 )
 
         post_process_list_for_lowp = []
-        if not check_inside_group:
+        if not check_inside_group and self.quantization_type is not None:
             post_process_list_for_lowp.append(inst_group_full_weight_name)
 
         def completion_lambda(
