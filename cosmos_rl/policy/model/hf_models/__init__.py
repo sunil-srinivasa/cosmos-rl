@@ -56,12 +56,15 @@ class HFModel(BaseModel):
     def supported_model_types():
         return [COSMOS_HF_MODEL_TYPES]
 
-    def __init__(self, hf_config, model, model_class, is_vlm=False):
+    def __init__(
+        self, hf_config, model, model_class, is_vlm=False, need_dequantization=False
+    ):
         super().__init__(hf_config)
         self.hf_config = hf_config
         self.model = model
         self.model_class = model_class
         self.is_vlm = is_vlm
+        self.need_dequantization = need_dequantization
         if getattr(model, "_checkpoint_conversion_mapping", None):
             # reverse the hf checkpoint conversion mapping to aligh with the vllm weights' name
             self.weight_mapper.reverse_hf_conversion_mapping = (
@@ -372,23 +375,23 @@ class HFModel(BaseModel):
             parallel_dims (ParallelDims): Parallel dimensions definition.
             info_inly (bool): Only collect the tensor infomation without actual data loading.
         """
-        quantization_config = self.hf_config.quantization_config
-        model_type = self.hf_config.model_type
-        if "gpt_oss" in model_type:
-            assert hasattr(
-                transformers_quantization_config, "Mxfp4Config"
-            ), "Mxfp4Config is not supported for this version of transformers."
-            cosmos_quantization_config = transformers_quantization_config.Mxfp4Config(
+        kwargs = {
+            "revision": revision,
+        }
+        if self.need_dequantization:
+            quantization_config = self.hf_config.quantization_config
+            mxfp4_quantization_config = transformers_quantization_config.Mxfp4Config(
                 dequantize=True,
                 modules_to_not_convert=quantization_config["modules_to_not_convert"],
             )
+            kwargs["quantization_config"] = mxfp4_quantization_config
 
         model_with_weights = self.model_class.from_pretrained(
             model_name_or_path,
-            revision=revision,
-            quantization_config=cosmos_quantization_config,
+            **kwargs,
         ).to("cpu")
 
+        model_type = self.hf_config.model_type
         hf_state_dict = model_with_weights.state_dict()
         self_state_dict = self.model.state_dict()
         self_state_dict = {clear_weight_name(k): v for k, v in self_state_dict.items()}
@@ -411,7 +414,7 @@ class HFModel(BaseModel):
                 local_view.shape == shared_weight.shape
             ), f"Shape mismatch: {local_view.shape} != {shared_weight.shape} for {dest_name}"
             with torch.no_grad():
-                local_view.data.copy_(shared_weight.to(local_view.dtype).to(device))
+                local_view.data.copy_(shared_weight.to(device))
 
         if (
             lm_head_weight_key not in all_tensor_names
@@ -436,7 +439,7 @@ class HFModel(BaseModel):
                     local_view.shape == shared_weight.shape
                 ), f"Shape mismatch: {local_view.shape} != {shared_weight.shape} for {dest_name}"
                 with torch.no_grad():
-                    local_view.data.copy_(shared_weight.to(local_view.dtype).to(device))
+                    local_view.data.copy_(shared_weight.to(device))
         del model_with_weights
 
     def get_position_ids(self, **kwargs) -> Tuple[torch.Tensor, torch.Tensor, int]:
@@ -550,15 +553,32 @@ class HFModel(BaseModel):
         """
         is_vlm = getattr(hf_config, "vision_config", None) is not None
         model_class = None
-        if "gpt_oss" in hf_config.model_type:
-            hf_config.quantization_config["dequantize"] = True
+        quantization_config = getattr(hf_config, "quantization_config", None)
+        need_dequantization = False
+        if quantization_config is not None:
+            if quantization_config["quant_method"] in ["mxfp4"]:
+                assert hasattr(
+                    transformers_quantization_config, "Mxfp4Config"
+                ), "Mxfp4Config is not supported in this version of transformers. Please upgrade transformers to version 4.45.0 or higher."
+                logger.warning(
+                    "We don't support mxfp4 training for HFModel currently, will default to dequantizing the model to bf16/fp16."
+                )
+                need_dequantization = True
+            hf_config.quantization_config["dequantize"] = need_dequantization
+
         try:
             model_class = load_model_class_by_config(hf_config)
             model = model_class(hf_config)
         except Exception as e:
             logger.error(f"Can not load {hf_config.model_type}")
             raise e
-        return cls(hf_config, model, model_class, is_vlm=is_vlm)
+        return cls(
+            hf_config,
+            model,
+            model_class,
+            is_vlm=is_vlm,
+            need_dequantization=need_dequantization,
+        )
 
     @classmethod
     def from_pretrained(
@@ -615,8 +635,5 @@ class HFModel(BaseModel):
                         return view.transpose(-2, -1).contiguous()
 
                     return partial(transform, local_view)
-                else:
-                    return local_view
-            return local_view
-        else:
-            return local_view
+
+        return local_view
