@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Hugging Face Model Type Support &mdash; cosmos-rl 0.1 documentation</title>
+  <title>Hugging Face Model Support &mdash; cosmos-rl 0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
@@ -49,11 +49,20 @@
 <li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataflow.html">Dataset &amp; Process</a></li>
 <li class="toctree-l1"><a class="reference internal" href="customization.html">Customization</a></li>
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Hugging Face Model Type Support</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#design-of-hf-model-type">Design of HF Model Type</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#policy-parallelism-support">Policy Parallelism Support</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#special-case-mistral-sft-with-custom-dataset-loader">Special Case: Mistral SFT with Custom Dataset Loader</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#supported-hf-models">Supported HF Models</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Hugging Face Model Support</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#architecture-design">Architecture Design</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#distributed-training-support">Distributed Training Support</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#training-examples">Training Examples</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#sft">SFT</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#grpo">GRPO</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#supported-models">Supported Models</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#llms">LLMs</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#vlms">VLMs</a></li>
+</ul>
+</li>
 </ul>
 </li>
 </ul>
@@ -97,7 +106,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Hugging Face Model Type Support</li>
+      <li class="breadcrumb-item active">Hugging Face Model Support</li>
       <li class="wy-breadcrumbs-aside">
             <a href="../_sources/quickstart/hf_models_support.rst.txt" rel="nofollow"> View page source</a>
       </li>
@@ -107,48 +116,92 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="hugging-face-model-type-support">
-<h1>Hugging Face Model Type Support<a class="headerlink" href="#hugging-face-model-type-support" title="Link to this heading"></a></h1>
-<section id="design-of-hf-model-type">
-<h2>Design of HF Model Type<a class="headerlink" href="#design-of-hf-model-type" title="Link to this heading"></a></h2>
-<p>The HF Model Type (<code class="docutils literal notranslate"><span class="pre">HFLLMModel</span></code>) in cosmos-rl is designed to provide a generic and flexible interface for integrating HF models into the training and inference pipeline. The core implementation is located in <code class="docutils literal notranslate"><span class="pre">cosmos_rl/policy/model/hf_llm/__init__.py</span></code>, where the <code class="docutils literal notranslate"><span class="pre">HFLLMModel</span></code> class acts as a universal wrapper for any model supported by Hugging Face’s <code class="docutils literal notranslate"><span class="pre">AutoModelForCausalLM</span></code>.
-Key design points:</p>
-<ul class="simple">
-<li><p><strong>Generic Wrapper:</strong> <code class="docutils literal notranslate"><span class="pre">HFLLMModel</span></code> can load any model architecture supported by Hugging Face, as long as it is compatible with <code class="docutils literal notranslate"><span class="pre">AutoModelForCausalLM</span></code>.</p></li>
-<li><p><strong>Automatic Fallback:</strong> If a model is not custom-defined in the <code class="docutils literal notranslate"><span class="pre">cosmos_rl/policy/model</span></code> directory, the system will automatically use the HF Models Type, ensuring broad compatibility and reducing the need for custom code.</p></li>
-<li><p><strong>Config and Weight Loading:</strong> The model configuration is loaded using <code class="docutils literal notranslate"><span class="pre">AutoConfig.from_pretrained</span></code>, and model weights are loaded via <code class="docutils literal notranslate"><span class="pre">AutoModelForCausalLM.from_pretrained</span></code>. This allows seamless integration with models from the Hugging Face Hub or local checkpoints.</p></li>
-<li><p><strong>Distributed Training Support:</strong> The wrapper is designed to work with distributed training strategies such as FSDP, and includes logic for weight synchronization, rotary embedding handling, and compatibility checks for parallelism.</p></li>
-<li><p><strong>Extensibility:</strong> By using the HF Models Type, users can quickly experiment with new or custom Hugging Face models without waiting for explicit support in cosmos-rl.</p></li>
+  <section id="hugging-face-model-support">
+<h1>Hugging Face Model Support<a class="headerlink" href="#hugging-face-model-support" title="Link to this heading"></a></h1>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>Cosmos-RL provides comprehensive support for Hugging Face models through its generic <code class="docutils literal notranslate"><span class="pre">HFModel</span></code> wrapper. This design enables seamless integration of any LLMs or VLMs compatible with HF Transformers into the training and inference pipeline.</p>
+</section>
+<section id="architecture-design">
+<h2>Architecture Design<a class="headerlink" href="#architecture-design" title="Link to this heading"></a></h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">HFModel</span></code> class, implemented in <code class="docutils literal notranslate"><span class="pre">cosmos_rl/policy/model/hf_models/__init__.py</span></code>, serves as a universal adapter for Hugging Face models. Key design principles include:</p>
+<dl class="simple">
+<dt><strong>Universal Compatibility</strong></dt><dd><p>The wrapper supports any LLM or VLM architecture available through Hugging Face’s model ecosystem.</p>
+</dd>
+<dt><strong>Automatic Fallback Mechanism</strong></dt><dd><p>When a model lacks custom implementation in the <code class="docutils literal notranslate"><span class="pre">cosmos_rl/policy/model</span></code> directory, the system automatically defaults to the HF Model wrapper, ensuring broad compatibility without requiring custom code.</p>
+</dd>
+<dt><strong>Seamless Integration</strong></dt><dd><ul class="simple">
+<li><p>Model configuration loading via <code class="docutils literal notranslate"><span class="pre">AutoConfig.from_pretrained</span></code></p></li>
+<li><p>Weight loading through <code class="docutils literal notranslate"><span class="pre">model_class.from_pretrained</span></code> (<code class="docutils literal notranslate"><span class="pre">model_class</span></code> is defined in “architectures” of config.json)</p></li>
 </ul>
-<p>This design ensures that cosmos-rl remains extensible and up-to-date with the rapidly evolving Hugging Face ecosystem, while still allowing for custom optimizations and model-specific logic when needed.</p>
+</dd>
+<dt><strong>Distributed Training Ready</strong></dt><dd><p>The wrapper is optimized for distributed training strategies, particularly FSDP (Fully Sharded Data Parallel), with built-in support for:
+- Weight synchronization
+- Rotary embedding handling
+- Parallelism compatibility checks</p>
+</dd>
+<dt><strong>Extensibility</strong></dt><dd><p>Users can rapidly experiment with new or custom Hugging Face models without waiting for explicit cosmos-rl support, making the framework future-proof and adaptable to the evolving AI model landscape.</p>
+</dd>
+</dl>
 </section>
-<section id="policy-parallelism-support">
-<h2>Policy Parallelism Support<a class="headerlink" href="#policy-parallelism-support" title="Link to this heading"></a></h2>
-<p>Currently, the Policy module only supports Fully Sharded Data Parallel (FSDP) for distributed training and inference.</p>
+<section id="distributed-training-support">
+<h2>Distributed Training Support<a class="headerlink" href="#distributed-training-support" title="Link to this heading"></a></h2>
+<p>Currently, the Policy module exclusively supports <strong>Fully Sharded Data Parallel (FSDP)</strong> for distributed training and inference operations.</p>
 </section>
-<section id="special-case-mistral-sft-with-custom-dataset-loader">
-<h2>Special Case: Mistral SFT with Custom Dataset Loader<a class="headerlink" href="#special-case-mistral-sft-with-custom-dataset-loader" title="Link to this heading"></a></h2>
-<p>For certain models like Mistral, SFT requires a custom dataset loader to avoid role alternation errors. Use the provided <cite>raw_text_sft.py</cite> script for this purpose.</p>
-<p>Example command:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/mistral/mistral-7b-fsdp4-sft.toml<span class="w"> </span>cosmos_rl.tools.dataset.dummy_sft.py
+<section id="training-examples">
+<h2>Training Examples<a class="headerlink" href="#training-examples" title="Link to this heading"></a></h2>
+<section id="sft">
+<h3>SFT<a class="headerlink" href="#sft" title="Link to this heading"></a></h3>
+<p>Note:</p>
+<ol class="arabic simple">
+<li><p>For LLMs like Mistral that require special handling to avoid role alternation errors, use the provided <code class="docutils literal notranslate"><span class="pre">dummy_sft.py</span></code> script.</p></li>
+<li><p>For VLMs, use the provided <code class="docutils literal notranslate"><span class="pre">hf_vlm_sft.py</span></code> script.</p></li>
+</ol>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># LLM SFT</span>
+cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/mistral/mistral-7b-fsdp4-sft.toml<span class="w"> </span>./tools/dataset/dummy_sft.py
+
+<span class="c1"># VLM SFT</span>
+cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/gemma/gemma3-12b-vlm-fsdp4-sft.toml<span class="w"> </span>./tools/dataset/hf_vlm_sft.py
 </pre></div>
 </div>
-<p>Another example for different configuration:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/mistral/mistral-7b-p-fsdp1-r-tp1-grpo.toml
+</section>
+<section id="grpo">
+<h3>GRPO<a class="headerlink" href="#grpo" title="Link to this heading"></a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># LLM GRPO</span>
+cosmos-rl<span class="w"> </span>--config<span class="w"> </span>configs/phi/phi4-14b-p-fsdp4-r-tp2-grpo.toml<span class="w"> </span>./tools/dataset/gsm8k_grpo.py
 </pre></div>
 </div>
 </section>
-<section id="supported-hf-models">
-<h2>Supported HF Models<a class="headerlink" href="#supported-hf-models" title="Link to this heading"></a></h2>
+</section>
+<section id="supported-models">
+<h2>Supported Models<a class="headerlink" href="#supported-models" title="Link to this heading"></a></h2>
+<p>The following models have been thoroughly tested and validated:</p>
+<section id="llms">
+<h3>LLMs<a class="headerlink" href="#llms" title="Link to this heading"></a></h3>
 <ul class="simple">
-<li><p>Mistral</p></li>
-<li><p>Gemma</p></li>
-<li><p>Phi</p></li>
+<li><p><strong>Mistral</strong></p></li>
+<li><p><strong>Gemma</strong></p></li>
+<li><p><strong>Phi</strong></p></li>
+<li><p><strong>GPT-OSS</strong></p></li>
+</ul>
+</section>
+<section id="vlms">
+<h3>VLMs<a class="headerlink" href="#vlms" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Gemma VLM</strong></p></li>
+<li><p><strong>Llama VLM</strong></p></li>
+<li><p><strong>LLava</strong></p></li>
+<li><p>Currently under active development</p></li>
 </ul>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Mistral, Gemma, Phi have been tested. Other HF models may also be supported. If you encounter any issues when training other models, please feel free to open an issue and let us know.</p>
+<p>While models above have been extensively tested, other Hugging Face models should also be compatible. If you encounter issues with untested models, please report them by opening an issue in our repository.</p>
 </div>
+<div class="admonition tip">
+<p class="admonition-title">Tip</p>
+<p>The generic HF Model wrapper enables support for most Hugging Face models without additional configuration. For optimal performance, consider using models that have been specifically tested and optimized.</p>
+</div>
+</section>
 </section>
 </section>
 
