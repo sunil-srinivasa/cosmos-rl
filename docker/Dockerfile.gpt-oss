@@ -145,5 +145,7 @@ RUN source /opt/venv/cosmos_rl/bin/activate && \
     pip uninstall -y flash-attn torchao vllm && \
     pip install uv && \
     uv pip install --pre vllm==0.10.1+gptoss torchao --extra-index-url https://wheels.vllm.ai/gpt-oss/ --extra-index-url https://download.pytorch.org/whl/nightly/cu128  --index-strategy unsafe-best-match && \
-    pip cache purge
+    pip cache purge && \
+    pip install flash-attn --no-build-isolation
+
 
