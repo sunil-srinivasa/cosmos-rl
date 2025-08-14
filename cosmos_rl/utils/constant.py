@@ -40,7 +40,7 @@ COSMOS_NCCL_ERROR_CLEAN_REPLICA_DELAY = int(
     os.environ.get("COSMOS_NCCL_ERROR_CLEAN_REPLICA_DELAY", "10")
 )
 COSMOS_P2R_TRANSFER_GROUP_SIZE = int(
-    os.environ.get("COSMOS_P2R_TRANSFER_GROUP_SIZE", "1")
+    os.environ.get("COSMOS_P2R_TRANSFER_GROUP_SIZE", "4")
 )
 
 # Internal model type for HFModel
