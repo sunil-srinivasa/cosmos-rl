@@ -43,8 +43,8 @@ COSMOS_P2R_TRANSFER_GROUP_SIZE = int(
     os.environ.get("COSMOS_P2R_TRANSFER_GROUP_SIZE", "1")
 )
 
-# Internal model type for HFLLMModel
-COSMOS_HF_MODEL_TYPES = "hfllm"
+# Internal model type for HFModel
+COSMOS_HF_MODEL_TYPES = "hfmodel"
 
 
 class CosmosHttpRetryConfig:

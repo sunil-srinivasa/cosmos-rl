@@ -41,8 +41,7 @@ from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.policy.config import Config as CosmosConfig
 from cosmos_rl.policy.model.base import ModelRegistry, BaseModel
 from functools import cached_property
-from flash_attn import flash_attn_func, flash_attn_varlen_func
-from flash_attn.layers.rotary import apply_rotary_emb
+import cosmos_rl.policy.kernel.modeling_utils as modeling_utils
 
 
 class Qwen2RMSNorm(nn.Module):
@@ -230,32 +229,37 @@ def rotate_half(x):
     return torch.cat((-x2, x1), dim=-1)
 
 
-# def apply_rotary_pos_emb_vision(
-#     q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
-# ) -> tuple[torch.Tensor, torch.Tensor]:
-#     orig_q_dtype = q.dtype
-#     orig_k_dtype = k.dtype
-#     q, k = q.float(), k.float()
-#     cos, sin = cos.unsqueeze(-2).float(), sin.unsqueeze(-2).float()
-#     q_embed = (q * cos) + (rotate_half(q) * sin)
-#     k_embed = (k * cos) + (rotate_half(k) * sin)
-#     q_embed = q_embed.to(orig_q_dtype)
-#     k_embed = k_embed.to(orig_k_dtype)
-#     return q_embed, k_embed
+if os.environ.get("COSMOS_USE_HF_IMPL", "0").lower() in ["1", "true"]:
 
+    def apply_rotary_pos_emb_vision(
+        q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        orig_q_dtype = q.dtype
+        orig_k_dtype = k.dtype
+        q, k = q.float(), k.float()
+        cos, sin = cos.unsqueeze(-2).float(), sin.unsqueeze(-2).float()
+        q_embed = (q * cos) + (rotate_half(q) * sin)
+        k_embed = (k * cos) + (rotate_half(k) * sin)
+        q_embed = q_embed.to(orig_q_dtype)
+        k_embed = k_embed.to(orig_k_dtype)
+        return q_embed, k_embed
+else:
 
-# TODO: Once flash_attn does not complain about activation check, we can use this.
-def apply_rotary_pos_emb_vision(
-    q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Apply rotary position embedding to the query and key tensors.
-    """
-    cos = cos.chunk(2, dim=-1)[0].contiguous()
-    sin = sin.chunk(2, dim=-1)[0].contiguous()
-    q_embed = apply_rotary_emb(q.float(), cos.float(), sin.float()).type_as(q)
-    k_embed = apply_rotary_emb(k.float(), cos.float(), sin.float()).type_as(k)
-    return q_embed, k_embed
+    def apply_rotary_pos_emb_vision(
+        q: torch.Tensor, k: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Apply rotary position embedding to the query and key tensors.
+        """
+        cos = cos.chunk(2, dim=-1)[0].contiguous()
+        sin = sin.chunk(2, dim=-1)[0].contiguous()
+        q_embed = modeling_utils.apply_rotary_emb(
+            q.float(), cos.float(), sin.float()
+        ).type_as(q)
+        k_embed = modeling_utils.apply_rotary_emb(
+            k.float(), cos.float(), sin.float()
+        ).type_as(k)
+        return q_embed, k_embed
 
 
 class Qwen2_5_VLVisionAttention(nn.Module):
@@ -265,6 +269,7 @@ class Qwen2_5_VLVisionAttention(nn.Module):
         self.qkv = nn.Linear(dim, dim * 3, bias=True)
         self.proj = nn.Linear(dim, dim)
         self.attention_dropout = 0.0
+        self.attn_func = modeling_utils.flash_attn_varlen_func
 
     def forward(
         self,
@@ -298,7 +303,7 @@ class Qwen2_5_VLVisionAttention(nn.Module):
             k = k.to(target_dtype)
             v = v.to(target_dtype)
 
-        attn_output = flash_attn_varlen_func(
+        attn_output = self.attn_func(
             q,
             k,
             v,
@@ -697,7 +702,7 @@ class Qwen2_5_VLAttention(nn.Module):
         self.n_kv_heads = model_args.n_kv_heads
         self.n_rep = self.n_heads // self.n_kv_heads
         self.head_dim = model_args.dim // model_args.n_heads
-        self.attn_func = flash_attn_func
+        self.attn_func = modeling_utils.flash_attn_func
 
         self.q_proj = nn.Linear(
             model_args.dim,
