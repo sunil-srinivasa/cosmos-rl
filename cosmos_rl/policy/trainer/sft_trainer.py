@@ -361,7 +361,11 @@ class SFTTrainer(Trainer):
         else:
             cp_group = None
 
-        self.loss_fn = partial(async_safe_ce, dp_group=dp_group, cp_group=cp_group)
+        self.loss_fn = partial(
+            async_safe_ce,
+            dp_group=dp_group,
+            cp_group=cp_group,
+        )
 
     def validate(self):
         logger.info(f"Validation at step {self.train_step}/{self.total_steps}...")
