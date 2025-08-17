@@ -1269,7 +1269,7 @@ class ParallelizedShardMapper:
             )
             if not insts_for_param_name:
                 logger.warning(
-                    f"No send instructions generated for parameter {dest_name} in policy rank {p_rank}."
+                    f"No send instructions generated for parameter {dest_name} in sorted_params, policy rank {p_rank}."
                 )
         for group in self.param_groups:
             insts_for_group = []
@@ -1322,6 +1322,10 @@ class ParallelizedShardMapper:
                         dest_name, insts_for_param_name
                     ).__dict__
                 )
+                if not insts_for_param_name:
+                    logger.warning(
+                        f"No send instructions generated for parameter {dest_name} in param_groups, policy rank {p_rank}."
+                    )
             policy_to_rollout_insts.append(
                 WeightSyncInstructionsGroup(insts_for_group).__dict__
             )
@@ -1446,6 +1450,10 @@ class ParallelizedShardMapper:
                         dest_name, insts_for_param_name
                     ).__dict__
                 )
+            else:
+                logger.warning(
+                    f"[Rollout] No recv instructions generated for parameter {dest_name} in sorted_params, rollout rank {r_rank}."
+                )
             if insts_for_group:
                 rollout_from_policy_insts.append(
                     WeightSyncInstructionsGroup(insts_for_group).__dict__
@@ -1504,6 +1512,10 @@ class ParallelizedShardMapper:
                         WeightSyncInstructionsPerParam(
                             dest_name, insts_for_param_name
                         ).__dict__
+                    )
+                else:
+                    logger.warning(
+                        f"[Rollout] No recv instructions generated for parameter {dest_name} in param_groups rollout rank {r_rank}."
                     )
             if insts_for_group:
                 rollout_from_policy_insts.append(

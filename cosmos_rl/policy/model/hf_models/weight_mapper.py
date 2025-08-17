@@ -20,6 +20,7 @@ from cosmos_rl.policy.model.base import WeightMapper
 from cosmos_rl.utils import util
 from transformers import AutoConfig
 from cosmos_rl.utils.parallelism import ParallelDims
+from functools import cached_property
 
 
 class HFModelWeightMapper(WeightMapper):
@@ -304,6 +305,28 @@ class HFModelWeightMapper(WeightMapper):
             )
             return split_strategy
         return []
+
+    @cached_property
+    def packed_modules_mapping(self):
+        mapping_dict = {
+            "qkv": [
+                "q",
+                "k",
+                "v",
+            ],
+            "gate_up_proj": [
+                "gate_proj",
+                "up_proj",
+            ],
+            "qkv_proj": [
+                "q_proj",
+                "k_proj",
+                "v_proj",
+            ],
+        }
+        if self.config.model_type == "gpt_oss":
+            mapping_dict["qkv"] = ["q_proj", "k_proj", "v_proj"]
+        return mapping_dict
 
     def get_unsplited_weight_name(self, weight_key: str) -> str:
         for key in ["q_proj", "k_proj", "v_proj"]:

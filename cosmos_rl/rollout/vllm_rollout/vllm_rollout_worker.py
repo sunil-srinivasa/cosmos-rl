@@ -604,17 +604,17 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 inst_dest_name,
             ) in tensors_to_check:
                 # Some corner cases that we should not do weight sync check.
-                do_check = self.weight_mapper.weight_sync_check_filter(
-                    self.parallel_dims, inst_dest_name
-                )
-                if do_check:
-                    if not torch.allclose(cloned_target_tensor, target_tensor):
-                        raise ValueError(
-                            f"Weight sync check failed after weight sync instruction: {insts} for {inst_dest_name}."
-                        )
+                # do_check = self.weight_mapper.weight_sync_check_filter(
+                #     self.parallel_dims, inst_dest_name
+                # )
+                # if do_check:
+                if not torch.allclose(cloned_target_tensor, target_tensor):
+                    raise ValueError(
+                        f"Weight sync check failed after weight sync instruction: {insts} for {inst_dest_name}."
+                    )
             tensors_to_check.clear()
 
-            # here we got one full weight tensor sync done, if it is fp8 weight, we should do the quantization and check the numerical error.
+            # here we got one full weight tensor sync done, if it is fp8/mxfp4 weight, we should do the quantization and check the numerical error.
             if self.quantization_type is not None:
                 for inst_group_full_weight_name in post_process_list_for_lowp:
                     if self.quantization_type == "fp8":
@@ -719,16 +719,37 @@ class vLLMRolloutWorker(RolloutWorkerBase):
 
                                 with torch.inference_mode():
                                     _, dim_1, dim_2 = quantized_weight.shape
-                                    # valid_native_weight = vllm_native_weight[:, :dim_1, :dim_2]
+
+                                    # check weight sync
+                                    if do_weight_sync_check:
+                                        valid_native_weight = vllm_native_weight[
+                                            :, :dim_1, :dim_2
+                                        ]
+                                        if not torch.allclose(
+                                            valid_native_weight, quantized_weight
+                                        ):
+                                            raise ValueError(
+                                                f"MXFP4 weight doesn't match after weight sync and dynamic quantization for full weight name: {inst_group_full_weight_name}."
+                                            )
                                     vllm_native_weight[:, :dim_1, :dim_2].copy_(
                                         quantized_weight
                                     )
-
+                                    # check weight sync
                                     _, dim_1, dim_2 = weight_scale.shape
-                                    # valid_native_weight_scale = vllm_native_weight_scale[:, :dim_1, :dim_2]
+                                    if do_weight_sync_check:
+                                        valid_native_weight_scale = (
+                                            vllm_native_weight_scale[:, :dim_1, :dim_2]
+                                        )
+                                        if not torch.allclose(
+                                            valid_native_weight_scale, weight_scale
+                                        ):
+                                            raise ValueError(
+                                                f"MXFP4 weight scale doesn't match after weight sync and dynamic quantization for full weight name: {inst_group_full_weight_name}."
+                                            )
                                     vllm_native_weight_scale[:, :dim_1, :dim_2].copy_(
                                         weight_scale
                                     )
+
                             else:
                                 # For w13_bias, no need to quant, just copy the weight.
                                 w13_bias_hp_weight = self.vllm_hp_weight_map[
@@ -741,9 +762,17 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                                     inst_group_full_weight_name
                                 ]
                                 _, dim1 = w13_bias_hp_weight.shape
+                                if do_weight_sync_check:
+                                    if not torch.allclose(
+                                        vllm_native_weight[:, :dim1], w13_bias_hp_weight
+                                    ):
+                                        raise ValueError(
+                                            f"gate_up_proj_bias doesn't match after weight sync for full weight name: {inst_group_full_weight_name}."
+                                        )
+
                                 vllm_native_weight[:, :dim1].copy_(w13_bias_hp_weight)
             else:
-                # For non-fp8 weights and fp8 not enabled cases, we just do nothing
+                # For non-fp8/mxfp4 weights and fp8/mxfp4 not enabled cases, we just do nothing
                 pass
 
         return total_bytes_received, partial(
