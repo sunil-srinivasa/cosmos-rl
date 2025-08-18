@@ -1269,7 +1269,7 @@ class ParallelizedShardMapper:
             )
             if not insts_for_param_name:
                 logger.warning(
-                    f"No send instructions generated for parameter {dest_name} in sorted_params, policy rank {p_rank}."
+                    f"[Policy] No send instructions generated for parameter {dest_name} in sorted_params, policy rank {p_rank}."
                 )
         for group in self.param_groups:
             insts_for_group = []
@@ -1324,14 +1324,14 @@ class ParallelizedShardMapper:
                 )
                 if not insts_for_param_name:
                     logger.warning(
-                        f"No send instructions generated for parameter {dest_name} in param_groups, policy rank {p_rank}."
+                        f"[Policy] No send instructions generated for parameter {dest_name} in param_groups, policy rank {p_rank}."
                     )
             policy_to_rollout_insts.append(
                 WeightSyncInstructionsGroup(insts_for_group).__dict__
             )
         if len(name_in_group) > 0:
             logger.warning(
-                f"No send instructions generated for parameters {name_in_group} in policy rank {p_rank}."
+                f"[Policy] No send instructions generated for parameters {name_in_group} in policy rank {p_rank}."
             )
         # Pack the instructions into msgpack format for efficient serialization.
         return msgpack.packb(policy_to_rollout_insts)
@@ -1460,7 +1460,7 @@ class ParallelizedShardMapper:
                 )
             else:
                 raise ValueError(
-                    f"No recv instructions generated for parameter {dest_name} in rollout rank {r_rank}."
+                    f"[Rollout] No recv insts_for_group generated for parameter {dest_name} in sorted_params, rollout rank {r_rank}."
                 )
         for group in self.param_groups:
             insts_for_group = []
@@ -1521,9 +1521,13 @@ class ParallelizedShardMapper:
                 rollout_from_policy_insts.append(
                     WeightSyncInstructionsGroup(insts_for_group).__dict__
                 )
+            else:
+                raise ValueError(
+                    f"[Rollout] No recv insts_for_group generated for parameter {dest_name} in rollout rank {r_rank}."
+                )
         assert (
             len(name_in_group) == 0
-        ), f"No recv instructions generated for parameters {name_in_group} in rollout rank {r_rank}."
+        ), f"[Rollout] No recv instructions generated for parameters {name_in_group} in rollout rank {r_rank}."
         # Pack the instructions into msgpack format for efficient serialization.
         return msgpack.packb(rollout_from_policy_insts)
 
