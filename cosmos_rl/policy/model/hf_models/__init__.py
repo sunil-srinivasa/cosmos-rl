@@ -21,7 +21,6 @@ from transformers import AutoConfig
 from cosmos_rl.utils.util import (
     sync_model_vocab,
     clear_weight_name,
-    retry,
     safe_deep_getattr,
     load_model_class_by_config,
     reverse_hf_checkpoint_mapping,
@@ -370,9 +369,11 @@ class HFModel(BaseModel):
             parallel_dims (ParallelDims): Parallel dimensions definition.
             info_inly (bool): Only collect the tensor infomation without actual data loading.
         """
-        model_type = retry(AutoConfig.from_pretrained)(model_name_or_path).model_type
+        model_type = self.hf_config.model_type
         model_with_weights = self.model_class.from_pretrained(
-            model_name_or_path, revision=revision
+            model_name_or_path,
+            revision=revision,
+            trust_remote_code=True,
         ).to("cpu")
 
         state_dict = model_with_weights.state_dict()
@@ -548,9 +549,20 @@ class HFModel(BaseModel):
             model_class = load_model_class_by_config(hf_config)
             model = model_class(hf_config)
         except Exception as e:
-            logger.error(f"Can not load {hf_config.model_type}")
-            raise e
-        return cls(hf_config, model, model_class, is_vlm=is_vlm)
+            logger.warning(
+                f"Got error({e}) when loading {hf_config.model_type}, Using AutoModel instead."
+            )
+            from transformers import AutoModel
+
+            model_class = AutoModel
+            model = AutoModel.from_config(hf_config, trust_remote_code=True)
+
+        return cls(
+            hf_config,
+            model,
+            model_class,
+            is_vlm=is_vlm,
+        )
 
     @classmethod
     def from_pretrained(
