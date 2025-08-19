@@ -43,7 +43,7 @@ from functools import cached_property
 import cosmos_rl.policy.kernel.modeling_utils as modeling_utils
 from cosmos_rl.policy.kernel.norm import RMSNorm
 from cosmos_rl.policy.kernel.fused import MLPActMulFunc
-from cosmos_rl.policy.model.qwen2_5_vl.encoder import (
+from cosmos_rl.policy.model.vision_encoder.qwen2_5_vl import (
     Qwen2_5_VL_Encoder_Args,
     Qwen2_5_VisionTransformerPretrainedModel,
     rotate_half,
