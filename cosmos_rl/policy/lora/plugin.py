@@ -124,6 +124,15 @@ class LoraInjectedLinear(nn.Linear):
     def merge_adapters_(self) -> None:
         if self.r == 0 or self.merged:
             return
+        _rank = (
+            torch.distributed.get_rank()
+            if torch.distributed.is_available() and torch.distributed.is_initialized()
+            else -1
+        )
+        print(
+            f"[LoraInjectedLinear.merge_adapters_] rank {_rank}: begin merge; weight is DTensor? {isinstance(self.weight, torch.distributed.tensor.DTensor)}",
+            flush=True,
+        )
         lora_A = (
             self.lora_A.weight.full_tensor()
             if isinstance(self.lora_A.weight, torch.distributed.tensor.DTensor)
@@ -135,10 +144,18 @@ class LoraInjectedLinear(nn.Linear):
             else self.lora_B.weight
         )
         delta_w = self.scaling * (lora_B @ lora_A)  # [out, in]
+        print(
+            f"[LoraInjectedLinear.merge_adapters_] rank {_rank}: delta_w computed with shape {tuple(delta_w.shape)}",
+            flush=True,
+        )
 
         assert not isinstance(delta_w, torch.distributed.tensor.DTensor)
 
         if isinstance(self.weight, torch.distributed.tensor.DTensor):
+            print(
+                f"[LoraInjectedLinear.merge_adapters_] rank {_rank}: weight is DTensor, performing add_",
+                flush=True,
+            )
             self.weight.add_(
                 torch.distributed.tensor.DTensor.from_local(
                     delta_w,
@@ -148,13 +165,31 @@ class LoraInjectedLinear(nn.Linear):
                 )
             )
         else:
+            print(
+                f"[LoraInjectedLinear.merge_adapters_] rank {_rank}: weight is regular Tensor, performing add_",
+                flush=True,
+            )
             self.weight.add_(delta_w)
         self.merged = True
+        print(
+            f"[LoraInjectedLinear.merge_adapters_] rank {_rank}: merge done",
+            flush=True,
+        )
 
     @torch.no_grad()
     def unmerge_adapters_(self) -> None:
         if self.r == 0 or not self.merged:
             return
+
+        _rank = (
+            torch.distributed.get_rank()
+            if torch.distributed.is_available() and torch.distributed.is_initialized()
+            else -1
+        )
+        print(
+            f"[LoraInjectedLinear.unmerge_adapters_] rank {_rank}: begin unmerge; weight is DTensor? {isinstance(self.weight, torch.distributed.tensor.DTensor)}",
+            flush=True,
+        )
 
         lora_A = (
             self.lora_A.weight.full_tensor()
@@ -167,8 +202,17 @@ class LoraInjectedLinear(nn.Linear):
             else self.lora_B.weight
         )
         delta_w = self.scaling * (lora_B @ lora_A)  # [out, in]
+        print(
+            f"[LoraInjectedLinear.unmerge_adapters_] rank {_rank}: delta_w computed with shape {tuple(delta_w.shape)}",
+            flush=True,
+        )
+
         assert not isinstance(delta_w, torch.distributed.tensor.DTensor)
         if isinstance(self.weight, torch.distributed.tensor.DTensor):
+            print(
+                f"[LoraInjectedLinear.unmerge_adapters_] rank {_rank}: weight is DTensor, performing sub_",
+                flush=True,
+            )
             self.weight.sub_(
                 torch.distributed.tensor.DTensor.from_local(
                     delta_w,
@@ -178,8 +222,16 @@ class LoraInjectedLinear(nn.Linear):
                 )
             )
         else:
+            print(
+                f"[LoraInjectedLinear.unmerge_adapters_] rank {_rank}: weight is regular Tensor, performing sub_",
+                flush=True,
+            )
             self.weight.sub_(delta_w)
         self.merged = False
+        print(
+            f"[LoraInjectedLinear.unmerge_adapters_] rank {_rank}: unmerge done",
+            flush=True,
+        )
 
     def lora_parameters(self) -> Iterable[nn.Parameter]:
         if self.r == 0:
