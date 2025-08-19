@@ -383,8 +383,8 @@ class SFTTrainer(Trainer):
                 self.optimizers, self.config, self.total_steps
             )
 
-        if self.parallel_dims.dp_enabled:
-            dp_group = self.parallel_dims.mesh["dp"].get_group()
+        if self.parallel_dims.dp_shard_enabled:
+            dp_group = self.parallel_dims.mesh["dp_shard"].get_group()
         else:
             dp_group = None
 
@@ -686,7 +686,6 @@ class SFTTrainer(Trainer):
                             labels,
                             loss_scaling_factor=1.0 / len(mini_batch_begin_idxs),
                         )
-
                         # # Hint FSDP to do all-reduce on the last backward pass
                         # if hasattr(self.model, "set_is_last_backward"):
                         #     print(f"set_is_last_backward: {i == mini_batch_begin_idxs[-1]}")
@@ -886,8 +885,8 @@ class SFTTrainer(Trainer):
         loss_scaling_factor = (
             mini_batch_size / self.config.train.train_batch_per_replica
         )
-        if self.parallel_dims.dp_enabled:
-            dp_group = self.parallel_dims.mesh["dp"].get_group()
+        if self.parallel_dims.dp_shard_enabled:
+            dp_group = self.parallel_dims.mesh["dp_shard"].get_group()
         else:
             dp_group = None
 
