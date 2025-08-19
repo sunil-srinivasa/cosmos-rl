@@ -757,6 +757,19 @@ class GRPOTrainer(Trainer):
             with torch.no_grad():
                 try:
                     if self.config.policy.lora is not None:
+                        if dist.is_available() and dist.is_initialized():
+                            try:
+                                logger.info(
+                                    f"[Policy][LoRA] rank {self.global_rank}/{self.world_size} entering barrier before merge"
+                                )
+                                _t0 = time.time()
+                                dist.barrier()
+                                _dt = time.time() - _t0
+                                logger.info(
+                                    f"[Policy][LoRA] rank {self.global_rank}/{self.world_size} passed barrier in {_dt:.3f}s"
+                                )
+                            except Exception:
+                                pass
                         from cosmos_rl.policy.lora.plugin import (
                             merge_lora_weights_,
                             unmerge_lora_weights_,
