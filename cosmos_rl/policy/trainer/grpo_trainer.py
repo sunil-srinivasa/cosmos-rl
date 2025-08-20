@@ -770,7 +770,10 @@ class GRPOTrainer(Trainer):
 
                     def grouped_send(grouped_send_ops):
                         nccl_group_start(comm_id)
-                        for view, r_rank in grouped_send_ops:
+                        for view, r_rank, dest_name in grouped_send_ops:
+                            logger.debug(
+                                f"[Policy] Sending tensor {dest_name} to rollout rank {r_rank}, shape {view.shape}"
+                            )
                             nccl_send(
                                 view,
                                 self.world_size + r_rank,
@@ -815,7 +818,7 @@ class GRPOTrainer(Trainer):
                                 logger.debug(
                                     f"Sending {dest_name} to rollout rank {r_rank}, {view.shape}"
                                 )
-                                grouped_send_ops.append((view, r_rank))
+                                grouped_send_ops.append((view, r_rank, dest_name))
                                 total_bytes_sent += view.numel() * view.element_size()
                         num_groups += 1
                         if num_groups == TRANSFER_GROUP_SIZE:

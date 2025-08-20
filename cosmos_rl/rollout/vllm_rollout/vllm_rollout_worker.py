@@ -529,7 +529,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                     recv_tensor = torch.empty_like(vllm_tensor_view).contiguous()
 
                 logger.debug(
-                    f"Recving tensor {inst_dest_name} from policy rank {p_rank}, shape {vllm_tensor_view.shape} of {target_tensor.shape}."
+                    f"[Rollout] Recving tensor {inst_dest_name} from policy rank {p_rank}, shape {vllm_tensor_view.shape} of {target_tensor.shape}."
                 )
 
                 nccl_recv(recv_tensor, p_rank, communicator_index)
