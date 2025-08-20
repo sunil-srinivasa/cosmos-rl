@@ -784,10 +784,16 @@ class GRPOTrainer(Trainer):
                     def grouped_send(grouped_send_ops):
                         nccl_group_start(comm_id)
                         for view, r_rank in grouped_send_ops:
+                            logger.info(
+                                f"lora debug: Sending... {view.shape} to rollout rank {r_rank}"
+                            )
                             nccl_send(
                                 view,
                                 self.world_size + r_rank,
                                 comm_id,
+                            )
+                            logger.info(
+                                f"lora debug: Sent {view.shape} to rollout rank {r_rank}"
                             )
                         nccl_group_end(comm_id)
                         grouped_send_ops.clear()
@@ -799,6 +805,7 @@ class GRPOTrainer(Trainer):
                     for insts_group in self.policy_to_rollout_insts:
                         for insts_for_per_param in insts_group.param_instructions:
                             dest_name = insts_for_per_param.param_name
+                            logger.info(f"lora debugProcessing {dest_name}")
                             for inst in insts_for_per_param.instructions:
                                 p_rank = inst.policy_rank
                                 r_rank = inst.rollout_rank
