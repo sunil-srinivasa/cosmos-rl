@@ -24,7 +24,7 @@ from cosmos_rl.policy.model import ModelRegistry, WeightMapper
 from typing import List, Tuple, Optional, Callable, Any
 from functools import partial
 from transformers import AutoConfig
-from cosmos_rl.rollout import RolloutWorkerBase
+from cosmos_rl.rollout import RolloutWorkerBase, State
 from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.policy.config import Config as CosmosConfig
 from cosmos_rl.utils.logging import logger
@@ -66,7 +66,6 @@ from cosmos_rl.utils.api_suffix import (
     COSMOS_API_ROLLOUT_SHARD_INFOS_SUFFIX,
     COSMOS_API_ROLLOUT_SHARD_RECV_INSTS_SUFFIX,
 )
-from cosmos_rl.utils.constant import COSMOS_P2R_TRANSFER_GROUP_SIZE
 
 from vllm import SamplingParams
 import time
@@ -110,42 +109,11 @@ class vLLMRolloutWorker(RolloutWorkerBase):
     vLLMRolloutWorker should support scaling launch.
     """
 
-    class State:
-        UNINITIALIZED = 0
-        WEIGHT_SYNCED = 1
-        PROMPT_FETCH_END = 1 << 1
-        PROMPT_CONSUME_END = 1 << 2
-
-        _state: int = UNINITIALIZED
-
-        def __init__(self):
-            self._state = self.UNINITIALIZED
-
-        def weight_synced(self):
-            return (self._state & self.WEIGHT_SYNCED) != 0
-
-        def set_weight_synced(self):
-            self._state = self._state | self.WEIGHT_SYNCED
-
-        def prompt_fetch_end(self):
-            return (self._state & self.PROMPT_FETCH_END) != 0
-
-        def set_prompt_fetch_end(self):
-            self._state = self._state | self.PROMPT_FETCH_END
-
-        def prompt_consume_end(self):
-            return (self._state & self.PROMPT_CONSUME_END) != 0
-
-        def set_prompt_consume_end(self):
-            assert (
-                not self.prompt_consume_end()
-            ), "Prompt consume end event should not be set twice."
-            self._state = self._state | self.PROMPT_CONSUME_END
-
     def __init__(self, config: CosmosConfig, parallel_dims: ParallelDims) -> None:
         super(vLLMRolloutWorker, self).__init__(config, parallel_dims)
-        self.state = self.State()
-        self.config = config
+
+        self.state = State()
+
         if self.config.rollout.parallelism.dp_shard_size == -1:
             self.config.rollout.parallelism.dp_shard_size = parallel_dims.dp_shard
         assert self.config.rollout.parallelism.dp_shard_size == parallel_dims.dp_shard
@@ -153,8 +121,6 @@ class vLLMRolloutWorker(RolloutWorkerBase):
             self.config.rollout.parallelism.dp_shard_size > 0
         ), "[Rollout] dp_shard_size should be greater than 0."
 
-        if self.tokenizer.pad_token_id is None:
-            self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         # CommandQueue queried from controller.
         self._command_queue: Queue[Command] = Queue()
         self._prompt_queue: Queue[List[List[int, str]]] = Queue()
@@ -186,13 +152,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
         if self.config.rollout.quantization != "none":
             self.quantization_type = self.config.rollout.quantization
 
-        self.rollout: vLLMRollout = vLLMRollout(
-            self.config,
-            tokenizer=self.tokenizer,
-            seed=self.config.rollout.seed,
-            load_format="dummy",
-            quantization=self.quantization_type,
-        )
+        self.rollout: vLLMRollout = vLLMRollout(self.config, self.tokenizer)
 
         # communicator index for the cached communicators in C++ binding.
         self.global_commnicator_idex = -1
@@ -387,6 +347,9 @@ class vLLMRolloutWorker(RolloutWorkerBase):
         if not hasattr(self, "_shutdown_handled"):
             self._shutdown_handled = True
             if not self.shutdown_signal.is_set():
+                logger.info(
+                    f"[Rollout] shutdown instruction of {self.replica_name}, setting shutdown signal"
+                )
                 self.shutdown_signal.set()
             if self.background_thread is not None:
                 self.background_thread.join()
@@ -920,7 +883,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                 total_bytes_received += bytes_received
 
                 pending_groups += 1
-                if pending_groups == COSMOS_P2R_TRANSFER_GROUP_SIZE:
+                if pending_groups == constant.COSMOS_P2R_NCCL_GROUP_SIZE:
                     nccl_group_end(communicator_index)
                     flush_completions(pending_bytes, pending_completions)
                     nccl_group_start(communicator_index)
@@ -1154,6 +1117,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
         current_command = dist_utils.broadcast_object_cpu(current_command)
 
         if current_command is not None:
+            logger.info(f"[Rollout] Current command: {current_command}")
             handler = self.get_rollout_command_handler(type(current_command))
             if handler is None:
                 raise Exception(
@@ -1182,7 +1146,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
             is_end=True,
         )
         try:
-            logger.debug(
+            logger.info(
                 f"[Rollout] Posting rollout end signal to controller: {response}"
             )
             make_request_with_retry(
@@ -1212,8 +1176,8 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                     self.batch_size, self._prompt_queue
                 )
                 if no_more_prompts:
-                    logger.debug(
-                        f"[Rollout] Receive prompt end, wait for {self.replica_name} to finish all rollouts generation."
+                    logger.info(
+                        f"[Rollout] Receive prompt end, wait for {self.replica_name} to finish all rollouts generation"
                     )
                     self.state.set_prompt_fetch_end()
                     # Further make sure to set `prompt_consume_end` if no more prompts to be consumed
@@ -1346,6 +1310,7 @@ class vLLMRolloutWorker(RolloutWorkerBase):
                     self.state.set_prompt_consume_end()
                     if self.global_rank == 0:
                         self.send_end_signal(COSMOS_API_ROLLOUT_SUFFIX)
+        logger.info(f"[Rollout] Main loop of {self.replica_name} finished")
 
     def work(self):
         # Start the thread with daemon=True, so it will exit when the main program exits.

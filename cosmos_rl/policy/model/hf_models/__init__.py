@@ -377,6 +377,7 @@ class HFModel(BaseModel):
         """
         kwargs = {
             "revision": revision,
+            "trust_remote_code": True,
         }
         if self.need_dequantization:
             quantization_config = self.hf_config.quantization_config
@@ -441,6 +442,14 @@ class HFModel(BaseModel):
                 with torch.no_grad():
                     local_view.data.copy_(shared_weight.to(device))
         del model_with_weights
+
+        # Enable gradient checkpointing
+        if self._gradient_checkpointing_enabled:
+            self.model.gradient_checkpointing_enable()
+            assert (
+                self.model.is_gradient_checkpointing
+            ), "Gradient checkpointing is not enabled"
+            logger.info("Enabled gradient checkpointing for HFModel")
 
     def get_position_ids(self, **kwargs) -> Tuple[torch.Tensor, torch.Tensor, int]:
         position_ids = None
@@ -570,8 +579,14 @@ class HFModel(BaseModel):
             model_class = load_model_class_by_config(hf_config)
             model = model_class(hf_config)
         except Exception as e:
-            logger.error(f"Can not load {hf_config.model_type}")
-            raise e
+            logger.warning(
+                f"Got error({e}) when loading {hf_config.model_type}, Using AutoModel instead."
+            )
+            from transformers import AutoModel
+
+            model_class = AutoModel
+            model = AutoModel.from_config(hf_config, trust_remote_code=True)
+
         return cls(
             hf_config,
             model,
