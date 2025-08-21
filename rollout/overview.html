@@ -6,7 +6,7 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Installation &mdash; cosmos-rl 0.1 documentation</title>
+  <title>&lt;no title&gt; &mdash; cosmos-rl 0.1 documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
 
@@ -19,8 +19,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Single node example" href="single_node_example.html" />
-    <link rel="prev" title="Welcome to cosmos-rl’s documentation!" href="../index.html" /> 
+    <link rel="next" title="vLLM" href="vllm.html" />
+    <link rel="prev" title="Hugging Face Model Support" href="../quickstart/hf_models_support.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -43,26 +43,18 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption" role="heading"><span class="caption-text">Quick Start</span></p>
-<ul class="current">
-<li class="toctree-l1 current"><a class="current reference internal" href="#">Installation</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#setup">Setup</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#option-1-build-docker-image-from-source">🐳 Option 1: Build docker image from source</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#option-2-run-in-your-own-environment">🔨 Option 2: Run in your own environment</a></li>
-</ul>
-</li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="single_node_example.html">Single node example</a></li>
-<li class="toctree-l1"><a class="reference internal" href="configuration.html">Configuration</a></li>
-<li class="toctree-l1"><a class="reference internal" href="dataflow.html">Dataset &amp; Process</a></li>
-<li class="toctree-l1"><a class="reference internal" href="customization.html">Customization</a></li>
-<li class="toctree-l1"><a class="reference internal" href="hf_models_support.html">Hugging Face Model Support</a></li>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/single_node_example.html">Single node example</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/configuration.html">Configuration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/dataflow.html">Dataset &amp; Process</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/customization.html">Customization</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../quickstart/hf_models_support.html">Hugging Face Model Support</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Rollout</span></p>
 <ul>
-<li class="toctree-l1"><a class="reference internal" href="../rollout/vllm.html">vLLM</a></li>
-<li class="toctree-l1"><a class="reference internal" href="../rollout/trtllm.html">[Experimental] TensorRT-LLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="vllm.html">vLLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="trtllm.html">[Experimental] TensorRT-LLM</a></li>
 </ul>
 <p class="caption" role="heading"><span class="caption-text">Multi nodes training</span></p>
 <ul>
@@ -104,9 +96,9 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Installation</li>
+      <li class="breadcrumb-item active">&lt;no title&gt;</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="../_sources/quickstart/installation.rst.txt" rel="nofollow"> View page source</a>
+            <a href="../_sources/rollout/overview.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -114,49 +106,15 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="installation">
-<h1>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h1>
-<section id="requirements">
-<h2>Requirements<a class="headerlink" href="#requirements" title="Link to this heading"></a></h2>
-<ul class="simple">
-<li><p><strong>Python</strong>: Version &gt;= 3.9</p></li>
-<li><p><strong>CUDA</strong>: Version &gt;= 12.2</p></li>
-<li><p><strong>PyTorch</strong>: Version &gt;= 2.6.0</p></li>
-<li><p><strong>vLLM</strong>: Version &gt;= 0.8.5</p></li>
-</ul>
-</section>
-<section id="setup">
-<h2>Setup<a class="headerlink" href="#setup" title="Link to this heading"></a></h2>
-<p>You can either build docker image from source or install dependencies inside your python env:</p>
-<section id="option-1-build-docker-image-from-source">
-<h3>🐳 Option 1: Build docker image from source<a class="headerlink" href="#option-1-build-docker-image-from-source" title="Link to this heading"></a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>build<span class="w"> </span>-t<span class="w"> </span>cosmos-rl-dev:dev<span class="w"> </span>.
-docker<span class="w"> </span>run<span class="w"> </span>-it<span class="w"> </span>--gpus<span class="w"> </span>all<span class="w"> </span>--shm-size<span class="o">=</span>24G<span class="w"> </span>-w<span class="w"> </span>/workspace/cosmos-rl<span class="w"> </span>cosmos-rl-dev:dev
-</pre></div>
-</div>
-<div class="admonition note">
-<p class="admonition-title">Note</p>
-<p>EFA driver is included in the docker image specifically for aws instances with EFA net interface (Sagemaker AI Pod).</p>
-<p>If you are not using EFA, you can build the docker image with <cite>docker build –build-arg COSMOS_RL_BUILD_MODE=no-efa -t cosmos-rl-dev:dev –target package .</cite>.</p>
-</div>
-</section>
-<section id="option-2-run-in-your-own-environment">
-<h3>🔨 Option 2: Run in your own environment<a class="headerlink" href="#option-2-run-in-your-own-environment" title="Link to this heading"></a></h3>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>redis-server
-pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
-</pre></div>
-</div>
-</section>
-</section>
-</section>
+  <p>Cosmos-RL supports <a class="reference external" href="https://github.com/vllm-project/vllm">vLLM</a> as the backend of rollout generaton.</p>
+<p>And recently, we have added an experimental support for <a class="reference external" href="https://github.com/NVIDIA/TensorRT-LLM">TensorRT-LLM</a> as the backend of rollout generation.</p>
 
 
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="../index.html" class="btn btn-neutral float-left" title="Welcome to cosmos-rl’s documentation!" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="single_node_example.html" class="btn btn-neutral float-right" title="Single node example" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="../quickstart/hf_models_support.html" class="btn btn-neutral float-left" title="Hugging Face Model Support" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="vllm.html" class="btn btn-neutral float-right" title="vLLM" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

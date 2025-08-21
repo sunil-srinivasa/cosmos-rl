@@ -51,6 +51,11 @@
 <li class="toctree-l1"><a class="reference internal" href="customization.html">Customization</a></li>
 <li class="toctree-l1"><a class="reference internal" href="hf_models_support.html">Hugging Face Model Support</a></li>
 </ul>
+<p class="caption" role="heading"><span class="caption-text">Rollout</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../rollout/vllm.html">vLLM</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../rollout/trtllm.html">[Experimental] TensorRT-LLM</a></li>
+</ul>
 <p class="caption" role="heading"><span class="caption-text">Multi nodes training</span></p>
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="../multinodes/overview.html">Multi-node example</a></li>
@@ -1428,7 +1433,7 @@
 </tr>
 <tr class="row-even"><td colspan="4"><p><span class="xref std std-ref">#/$defs/SubProfilerConfig</span></p></td>
 </tr>
-<tr class="row-odd"><td rowspan="51"><ul class="simple">
+<tr class="row-odd"><td rowspan="55"><ul class="simple">
 <li><p>RolloutConfig</p></li>
 </ul>
 </td>
@@ -1612,6 +1617,20 @@
 </tr>
 <tr class="row-odd"><td><p>default</p></td>
 <td colspan="3"><p>False</p></td>
+</tr>
+<tr class="row-even"><td rowspan="4"><ul class="simple">
+<li><p>backend</p></li>
+</ul>
+</td>
+<td colspan="4"><p><em>Backend</em></p></td>
+</tr>
+<tr class="row-odd"><td colspan="4"><p>Backend for rollout. Currently support <cite>vllm</cite> and <cite>trtllm</cite>.</p></td>
+</tr>
+<tr class="row-even"><td><p>type</p></td>
+<td colspan="3"><p><em>string</em></p></td>
+</tr>
+<tr class="row-odd"><td><p>default</p></td>
+<td colspan="3"><p>vllm</p></td>
 </tr>
 <tr class="row-even"><td rowspan="39"><ul class="simple">
 <li><p>RolloutParallelismConfig</p></li>
