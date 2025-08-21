@@ -3,7 +3,7 @@ redis = "12800"
 [train]
 resume = false
 epoch = 15
-output_dir = "./outputs/qwen2-5-32b-p-fsdp2-tp4-r-tp4-pp1-grpo"
+output_dir = "./outputs/qwen2-5-7b-p-fsdp4-r-tp2-grpo-trtllm"
 epsilon = 1e-6
 optm_name = "AdamW"
 optm_lr = 1e-6
@@ -29,6 +29,7 @@ batch_size = 8
 quantization = "none"
 max_response_length = 1024
 enforce_eager=false
+backend = "trtllm"
 
 
 [policy]
@@ -63,13 +64,17 @@ save_freq = 30000
 save_mode = "async"
 
 [rollout.parallelism]
-n_init_replicas = 2
+n_init_replicas = 1
 tp_size = 2
 cp_size = 1
 dp_shard_size = 1
 pp_size = 1
 dp_replicate_size = 1
 
+[rollout.sampling_config]
+temperature = 0.9
+top_p = 1.0
+top_k = 10
 
 [policy.parallelism]
 n_init_replicas = 1
