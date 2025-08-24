@@ -100,6 +100,7 @@ class PolicyStatusManager:
 
     # Instance status
     status: Dict[str, PolicyStatus]
+    is_rl: bool
 
     def __init__(self):
         self.policy_replicas = {}
@@ -125,6 +126,7 @@ class PolicyStatusManager:
         current_step: int = 0,
         val_dataloader: Optional[DataLoader] = None,
         max_num_steps: Optional[int] = None,
+        is_rl: bool = True,
     ):
         self.redis_handler = redis_handler
         self.config = config
@@ -134,6 +136,7 @@ class PolicyStatusManager:
         self.current_step = current_step
         self.max_num_steps = max_num_steps
         self.recompute_total_steps()
+        self.is_rl = is_rl
 
     def n_atoms_per_replica(self) -> int:
         """
@@ -683,17 +686,20 @@ class PolicyStatusManager:
 
                     ## average metrics
                     for m in [
-                        "train/loss_avg", "train/iteration_time",
-                        "train/kl_loss_avg", "train/grad_norm",
+                        "train/loss_avg",
+                        "train/iteration_time",
+                        "train/kl_loss_avg",
+                        "train/grad_norm",
                     ]:
                         if m in self.report_data_list[0]:
                             policy_report_data[m] = np.mean(
                                 [data[m] for data in self.report_data_list]
                             )
-                    
+
                     ## max metrics
                     for m in [
-                        "train/loss_max", "train/kl_loss_max", 
+                        "train/loss_max",
+                        "train/kl_loss_max",
                     ]:
                         if m in self.report_data_list[0]:
                             policy_report_data[m] = np.max(
@@ -701,11 +707,17 @@ class PolicyStatusManager:
                             )
 
                     # set default value if not present
-                    for m in [
-                        "train/kl_loss_avg", "train/kl_loss_max", "train/grad_norm",
-                    ] if self.is_rl else [
-                        "train/grad_norm",
-                    ]:
+                    for m in (
+                        [
+                            "train/kl_loss_avg",
+                            "train/kl_loss_max",
+                            "train/grad_norm",
+                        ]
+                        if self.is_rl
+                        else [
+                            "train/grad_norm",
+                        ]
+                    ):
                         if m not in policy_report_data:
                             policy_report_data[m] = 0
 
