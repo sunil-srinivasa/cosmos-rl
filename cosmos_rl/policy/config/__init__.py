@@ -112,7 +112,7 @@ class SFTDataConfig(BaseModel):
     )
 
     dataloader_shuffle: bool = Field(
-        default=False,
+        default=True,
         description="Shuffle the dataloader. If False, the dataloader will be used in the order it is loaded.",
     )
     enable_dataset_cache: bool = Field(
@@ -469,6 +469,11 @@ class TrainingConfig(BaseModel):
     param_dtype: str = Field(
         default="bfloat16",
         description="The data type for forward/backward. Outside forward/backward, params are in `master_dtype`",
+        choices=["bfloat16", "float16", "float32"],
+    )
+    transfer_dtype: str = Field(
+        default=None,
+        description="The data type for transfer parameters between Policy and Rollout.",
         choices=["bfloat16", "float16", "float32"],
     )
 
@@ -952,6 +957,10 @@ class Config(BaseModel):
             # Handle for evaludation configuration.
             if isinstance(self.validation.dataset.split, str):
                 self.validation.dataset.split = [self.validation.dataset.split]
+
+        if self.train.transfer_dtype is None:
+            # Default use param_dtype as transfer_dtype
+            self.train.transfer_dtype = self.train.param_dtype
         return self
 
 
