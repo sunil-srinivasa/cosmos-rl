@@ -14,8 +14,7 @@
 # limitations under the License.
 
 import sys
-from cosmos_rl.utils.logging import logger
-from cosmos_rl.utils.parallelism import ParallelDims
+
 from cosmos_rl.policy.config import Config as RolloutConfig
 from cosmos_rl.utils.distributed import init_distributed, destroy_distributed
 from cosmos_rl.rollout.vllm_rollout.vllm_rollout_worker import vLLMRolloutWorker
@@ -50,7 +49,7 @@ def run_rollout(*args, **kwargs):
         rollout_backend = cosmos_rollout_config.rollout.backend
         if rollout_backend == "vllm":
             parallel_dims = ParallelDims.from_config(
-                parallesim_config=cosmos_rollout_config.rollout.parallelism
+                paralleism_config=cosmos_rollout_config.rollout.parallelism
             )
             init_distributed()
             parallel_dims.build_mesh(device_type="cuda")

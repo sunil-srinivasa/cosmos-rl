@@ -35,17 +35,18 @@ try:
 except ImportError:
     print("torch.distributed.fsdp is not available. DeepSeek model will not work.")
 
+from cosmos_rl.policy.config import Config as CosmosConfig
+from cosmos_rl.policy.kernel.moe.moe import GroupedExpertsDeepEP, MoE
+from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_model import (
+    pipeline_model,
+)
+from cosmos_rl.utils.parallelism import ParallelDims
+from cosmos_rl.utils.ulysses import swizzle_cp_forward, ulysses_attn_func
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     checkpoint_wrapper as ptd_checkpoint_wrapper,
 )
 from transformer_engine.pytorch.attention import DotProductAttention
 
-from cosmos_rl.policy.config import Config as CosmosConfig
-from cosmos_rl.policy.kernel.moe.moe import GroupedExpertsDeepEP, MoE
-from cosmos_rl.utils.parallelism import ParallelDims
-from cosmos_rl.utils.ulysses import swizzle_cp_forward, ulysses_attn_func
-
-from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_model import pipeline_model
 
 def _get_dp_mesh(
     world_mesh: DeviceMesh, parallel_dims: ParallelDims
@@ -239,7 +240,9 @@ def _init_meshes(
     local_rank = int(os.getenv("LOCAL_RANK", 0))
     device = torch.device(f"{device_type}:{local_rank}")
     device_module.set_device(device)
+
     meshes = parallel_dims.build_meshes_with_ep(device_type=device_type)
+
     return meshes
 
 
@@ -291,4 +294,4 @@ def parallelize_model(
 
         _apply_fsdp(model_part, meshes, parallel_dims)
 
-    return None, None
+    return model, model
