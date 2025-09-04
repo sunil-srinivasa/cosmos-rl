@@ -13,18 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cosmos_rl.utils.logging import logger
-from cosmos_rl.utils.parallelism import ParallelDims
+import torch
+from cosmos_rl.policy.config import Config as CosmosConfig
+from cosmos_rl.policy.trainer.grpo_trainer import GRPOTrainer
+from cosmos_rl.policy.trainer.sft_trainer import SFTTrainer
+from cosmos_rl.utils import util
 from cosmos_rl.utils.distributed import (
-    init_distributed,
     destroy_distributed,
     get_controller_metadata,
+    init_distributed,
 )
-from cosmos_rl.policy.trainer.sft_trainer import SFTTrainer
-from cosmos_rl.policy.trainer.grpo_trainer import GRPOTrainer
-from cosmos_rl.policy.config import Config as CosmosConfig
-import torch
-from cosmos_rl.utils import util
+from cosmos_rl.utils.logging import logger
+from cosmos_rl.utils.parallelism import ParallelDims
 
 
 def main(*args, **kwargs):
@@ -41,7 +41,7 @@ def main(*args, **kwargs):
     logger.info(f"[Policy] Loaded configuration: {cosmos_config.model_dump()}")
 
     parallel_dims = ParallelDims.from_config(
-        parallesim_config=cosmos_config.policy.parallelism
+        parallelism_config=cosmos_config.policy.parallelism
     )
     init_distributed()
     parallel_dims.build_mesh(device_type="cuda")

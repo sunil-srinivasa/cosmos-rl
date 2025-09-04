@@ -13,8 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any, Dict, List, Tuple
+
 import torch
-from typing import List, Tuple, Dict, Any
 from cosmos_rl.policy.model.base import WeightMapper
 from cosmos_rl.utils import util
 from transformers import AutoConfig
@@ -45,3 +46,12 @@ class DeepseekV3MoEWeightMapper(WeightMapper):
 
     def get_rollout_parallelism_strategy(self):
         raise NotImplementedError
+
+    def get_unsplited_weight_name(self, weight_key: str) -> str:
+        for key in ["q_proj", "k_proj", "v_proj"]:
+            if key in weight_key:
+                return weight_key.replace(key, "qkv_proj")
+        for key in ["gate_proj", "up_proj"]:
+            if key in weight_key:
+                return weight_key.replace(key, "gate_up_proj")
+        return weight_key  # return full weight key`
