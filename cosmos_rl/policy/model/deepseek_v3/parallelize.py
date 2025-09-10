@@ -246,7 +246,7 @@ def _init_meshes(
     return meshes
 
 
-def parallelize_model(
+def parallelize(
     model: nn.Module,
     parallel_dims: ParallelDims,
     config: CosmosConfig,

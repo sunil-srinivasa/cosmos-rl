@@ -162,11 +162,11 @@ class DeepseekV3MoEModel(BaseModel):
 
     @property
     def parallelize_fn(self):
-        from cosmos_rl.policy.model.deepseek_v3.parallelize import parallelize_model
+        from cosmos_rl.policy.model.deepseek_v3.parallelize import parallelize
 
         # from cosmos_rl.tools.model.deepseek_v3.parallelize import parallelize
 
-        return parallelize_model, self
+        return parallelize, self
 
     def post_to_empty_hook(self, cosmos_config: CosmosConfig):
         return
@@ -277,6 +277,7 @@ class DeepseekV3MoEModel(BaseModel):
                 clear_weight_name(k): v for k, v in self_state_dict.items()
             }
 
+            # lm_head_weight_key = "model.model.lm_head.weight"
             lm_head_weight_key = "model.lm_head.weight"
             embed_tokens_weight_key = "model.model.embed_tokens.weight"
             weights_of_ckpt_names = set()
