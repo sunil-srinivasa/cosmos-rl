@@ -501,12 +501,12 @@ class ModelRegistry:
 
         model_cls = ModelRegistry._MODEL_REGISTRY[model_type]
 
+        hf_config.torch_dtype = util.str2torch_dtype(config.train.param_dtype)
         cosmos_default_dtype = util.str2torch_dtype(
             config.train.master_dtype
             if config.train.master_dtype is not None
             else config.train.param_dtype
         )
-        hf_config.torch_dtype = cosmos_default_dtype
 
         with torch.device("meta"):
             with util.cosmos_default_dtype(cosmos_default_dtype):
