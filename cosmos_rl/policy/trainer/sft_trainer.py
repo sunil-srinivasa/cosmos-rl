@@ -781,7 +781,8 @@ class SFTTrainer(Trainer):
                         # return
                         #########################################################################################
 
-                        logits = self.model(**batch)
+                        with self.act_offloading_ctx_manager:
+                            logits = self.model(**batch)
 
                         loss = self.loss_fn(
                             logits,
