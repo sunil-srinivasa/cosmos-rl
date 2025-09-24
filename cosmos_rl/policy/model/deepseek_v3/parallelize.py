@@ -16,6 +16,7 @@
 
 import functools
 import os
+from dataclasses import dataclass
 from typing import Callable, Optional
 
 import torch
@@ -40,7 +41,11 @@ from cosmos_rl.policy.kernel.moe.moe import GroupedExpertsDeepEP, MoE
 from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_model import (
     pipeline_model,
 )
+from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_schedules import (
+    _PipelineSchedule,
+)
 from cosmos_rl.utils.parallelism import ParallelDims
+from cosmos_rl.utils.pipelining.pipelining_utils import build_pipeline_schedule
 from cosmos_rl.utils.ulysses import swizzle_cp_forward, ulysses_attn_func
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     checkpoint_wrapper as ptd_checkpoint_wrapper,
@@ -246,22 +251,42 @@ def _init_meshes(
     return meshes
 
 
-def parallelize(
+@dataclass
+class PipelineParallelConfig:
+    """Configuration for pipeline parallelism."""
+
+    # The batch size for the pipeline. This is the batch size summed across
+    # all PP ranks for the current PP mesh.
+    batch_size: int
+
+    # The microbatch size for the pipeline. The batch is divided into several
+    # microbatches for reducing pipeline bubble overheads.
+    microbatch_size: int
+
+    # The schedule for the pipeline. Supported schedules are GPipe, 1F1B, and
+    # Interleaved1F1B.
+    schedule: str
+
+    # Whether the pipeline schedule must execute the backward pass as well.
+    has_backward: bool
+
+
+def parallelize_fn(
     model: nn.Module,
     parallel_dims: ParallelDims,
     config: CosmosConfig,
     pp_loss_fn: Optional[Callable],
 ) -> nn.Module:
     """
-    Parallelizes the DeepSeek model based on the provided meshes and parallel dimensions.
+    Parallelizes a model (or model part) based on the provided meshes and parallel dimensions.
 
     Args:
-        model (nn.Module): The DeepSeek model to parallelize. Note that this maybe
+        model (nn.Module): The model to parallelize. Note that this maybe
             a model part due to pipelining. We must check for the presence of an
             nn.Module before executing the relevant parallelization functions.
 
     Returns:
-        nn.Module: The parallelized DeepSeek model.
+        nn.Module: The parallelized model.
     """
     meshes = _init_meshes(parallel_dims)
     del config
@@ -273,25 +298,71 @@ def parallelize(
     )
     assert parallel_dims.tp == 1, "Tensor parallelism not support for DeepSeek model"
 
+    if parallel_dims.cp_enabled:
+        _apply_cp(model, meshes["default"]["cp"], parallel_dims)
+
+    if parallel_dims.ep_enabled:
+        assert "moe" in meshes
+        _apply_ep(model, meshes["moe"]["ep"])
+
+    _apply_ac(model)
+
+    _apply_fsdp(model, meshes, parallel_dims)
+
+    return model
+
+
+def parallelize(
+    model: nn.Module,
+    parallel_dims: ParallelDims,
+    config: CosmosConfig,
+    pp_loss_fn: Optional[Callable],
+) -> nn.Module:
+
     if parallel_dims.pp_enabled:
+        meshes = _init_meshes(parallel_dims)
         local_rank = int(os.getenv("LOCAL_RANK", 0))
         device_type, _ = _get_device_info()
         device = torch.device(f"{device_type}:{local_rank}")
 
+        # Model parts
         model_parts = pipeline_model(model, meshes, parallel_dims, device)
+        # TODO(ssrinivasa): Verify that parallel_context.pp_mesh.size() is the same as parallel_dims.pp
+        num_pipeline_stages = len(model_parts) * parallel_dims.pp
+        pp_mesh = meshes["default"]["pp"]
+
+        # Training and validation pp variants
+        pp_variants: dict[str, PipelineParallelConfig] = {}
+        pp_variants["train"] = PipelineParallelConfig(
+            batch_size=config.train.train_batch_per_replica,
+            microbatch_size=config.policy.parallelism.pp_micro_batch_size,
+            schedule=config.policy.parallelism.pp_schedule,
+            has_backward=True,
+        )
+        pp_variants["validation"] = PipelineParallelConfig(
+            batch_size=1,
+            microbatch_size=1,
+            schedule=config.policy.parallelism.pp_schedule,
+            has_backward=False,
+        )
+
+        # Schedules
+        pp_schedules: dict[str, _PipelineSchedule] = {}
+        for name, pp_config in pp_variants.items():
+            assert (
+                pp_loss_fn is not None
+            ), "Loss function must be provided for pipeline parallelism"
+            pp_schedules[name] = build_pipeline_schedule(
+                pp_mesh=pp_mesh,
+                batch_size=pp_config.batch_size * pp_mesh.size(),
+                num_stages=num_pipeline_stages,
+                schedule_str=pp_config.schedule,
+                microbatch_size=pp_config.microbatch_size,
+                model_parts=model_parts,
+                device=device,
+                loss_fn=pp_loss_fn,
+                has_backward=pp_config.has_backward,
+            )
+        return pp_schedules["train"], pp_schedules["validation"]
     else:
-        model_parts = [model]
-
-    for model_part in model_parts:
-        if parallel_dims.cp_enabled:
-            _apply_cp(model_part, meshes["default"]["cp"], parallel_dims)
-
-        if parallel_dims.ep_enabled:
-            assert "moe" in meshes
-            _apply_ep(model_part, meshes["moe"]["ep"])
-
-        _apply_ac(model_part)
-
-        _apply_fsdp(model_part, meshes, parallel_dims)
-
-    return model, model
+        return parallelize_fn(model, parallel_dims, config, pp_loss_fn)
