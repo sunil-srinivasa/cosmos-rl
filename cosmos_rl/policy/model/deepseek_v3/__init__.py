@@ -164,9 +164,12 @@ class DeepseekV3MoEModel(BaseModel):
     def parallelize_fn(self):
         from cosmos_rl.policy.model.deepseek_v3.parallelize import parallelize
 
-        # from cosmos_rl.tools.model.deepseek_v3.parallelize import parallelize
-
         return parallelize, self
+
+    def parallelizing_fn(self):
+        from cosmos_rl.policy.model.deepseek_v3.parallelize import parallelize_fn
+
+        return parallelize_fn
 
     def post_to_empty_hook(self, cosmos_config: CosmosConfig):
         return
