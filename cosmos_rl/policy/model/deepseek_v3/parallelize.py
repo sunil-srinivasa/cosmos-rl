@@ -309,7 +309,9 @@ def parallelize_fn(
 
     _apply_fsdp(model, meshes, parallel_dims)
 
-    return model
+    if parallel_dims.pp_enabled:
+        return model
+    return None, None
 
 
 def parallelize(
