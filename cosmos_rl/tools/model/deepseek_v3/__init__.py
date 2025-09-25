@@ -13,39 +13,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import re
-import os
 import math
-import torch
-from torch import nn
-import torch.nn.functional as F
-import torch.distributed as dist
-from safetensors import safe_open
+import os
+import re
 from dataclasses import dataclass, field
-from typing import Tuple, List, Optional, Callable
-from transformers import AutoConfig
+from functools import cached_property
+from typing import Callable, List, Optional, Tuple
+
+import torch
+import torch.distributed as dist
 import torch.distributed._symmetric_memory as symm_mem
+import torch.nn.functional as F
+from cosmos_rl.policy.config import Config as CosmosConfig
+from cosmos_rl.policy.kernel.fused import MLPActMulFunc
+from cosmos_rl.policy.kernel.moe.grouped_gemm import group_gemm_imp
+from cosmos_rl.policy.kernel.moe.indices import generate_permute_indices
+from cosmos_rl.policy.kernel.norm import RMSNorm
+from cosmos_rl.policy.kernel.symm_mem_recipes import OnDeviceAllToAllV
+from cosmos_rl.policy.model.base import BaseModel
+from cosmos_rl.utils.logging import logger
+from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.utils.util import (
-    resolve_model_path,
     IdentityLayer,
     clear_weight_name,
-    sync_model_vocab,
+    resolve_model_path,
     retry,
+    sync_model_vocab,
 )
-from cosmos_rl.utils.logging import logger
-from .weight_converter import (
-    convert_weight_from_hf,
-)
-from cosmos_rl.utils.parallelism import ParallelDims
-from cosmos_rl.policy.kernel.symm_mem_recipes import OnDeviceAllToAllV
-from cosmos_rl.policy.kernel.moe.indices import generate_permute_indices
-from cosmos_rl.policy.kernel.moe.grouped_gemm import group_gemm_imp
-from cosmos_rl.policy.config import Config as CosmosConfig
-from cosmos_rl.policy.model.base import BaseModel
+from safetensors import safe_open
+from torch import nn
+from transformers import AutoConfig
 from transformers.activations import ACT2FN
-from functools import cached_property
-from cosmos_rl.policy.kernel.norm import RMSNorm
-from cosmos_rl.policy.kernel.fused import MLPActMulFunc
+
+from .weight_converter import convert_weight_from_hf
 
 
 @dataclass
@@ -476,7 +476,9 @@ class MoEGate(nn.Module):
             )  # [n, n_group]
             group_idx = torch.topk(
                 group_scores, k=self.topk_group, dim=-1, sorted=False
-            )[1]  # [n, top_k_group]
+            )[
+                1
+            ]  # [n, top_k_group]
             group_mask = torch.zeros_like(group_scores)  # [n, n_group]
             group_mask.scatter_(1, group_idx, 1)  # [n, n_group]
             score_mask = (

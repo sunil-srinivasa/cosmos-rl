@@ -13,10 +13,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from cosmos_rl.utils.parallelism import ParallelDims
-import torch
 import re
-from typing import Tuple, Dict, Any
+from typing import Any, Dict, Tuple
+
+import torch
+from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.utils.parallelism_registry import register_parallelism_strategy
 
 
@@ -163,9 +164,7 @@ def convert_weight_from_hf(
     ) is not None:
         shard = tensor
     elif (
-        match := re.search(  # noqa: F841
-            r"layers\.(\d+)\.mlp\.gate\.weight", dest_name
-        )
+        match := re.search(r"layers\.(\d+)\.mlp\.gate\.weight", dest_name)  # noqa: F841
     ) is not None:
         # TODO(cjx): Small enough, forbid FSDP sharding is better
         shard = tensor
@@ -208,6 +207,7 @@ def map_weight_parallel_dims(
     n_layers = model_config.num_hidden_layers
 
     assert dest_name.startswith("model.") or dest_name.startswith("lm_head.")
+
     if tp_ep_size > 1:
         if "lm_head.weight" == dest_name:
             dims_map[dim] = 0
