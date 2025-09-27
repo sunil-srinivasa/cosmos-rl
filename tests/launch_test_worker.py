@@ -79,7 +79,7 @@ from cosmos_rl.utils.sequence_packing import (
     pack_sequences_for_masks,
     pack_sequences_for_labels,
 )
-from torch.utils.data import DataLoader, DistributedSampler, Sampler
+from torch.utils.data import DataLoader, DistributedSampler, Sampler, BatchSampler
 from cosmos_rl.policy.trainer.sft_trainer import collate_fn, construct_dataset
 from torch.utils.data import Dataset
 from datasets import concatenate_datasets
@@ -1734,11 +1734,13 @@ def run_sft_custom_sampler():
         def __iter__(self):
             it = iter(self.base)
             dp_rank = dist.get_rank() // 2
-            cnt = 0
-            for i in it:
-                assert (i - dp_rank) % 2 == 0
-                cnt += 1
-            assert cnt == 8
+            if not hasattr(self, "checked"):
+                cnt = 0
+                for i in it:
+                    assert (i - dp_rank) % 2 == 0
+                    cnt += 1
+                assert cnt == 8
+                self.checked = True
             it = iter(self.base)
             return it
 
@@ -1752,6 +1754,38 @@ def run_sft_custom_sampler():
     dataset = TestDatasetSampler(config)
     dataset.setup(config=config, tokenizer=None)
 
+    dp_rank, dp_world_size = 0, 1
+    if parallel_dims.dp_enabled:
+        dp_rank = parallel_dims.mesh["dp"].get_local_rank()
+        dp_world_size = parallel_dims.mesh["dp"].size()
+
+    test_sampler = TestSampler(
+        dataset,
+        num_replicas=dp_world_size,
+        rank=dp_rank,
+        shuffle=False,
+        drop_last=False,
+    )
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=test_sampler,
+        val_sampler=test_sampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
     trainer = SFTTrainer(
         config=config,
         parallel_dims=parallel_dims,
@@ -1761,10 +1795,85 @@ def run_sft_custom_sampler():
         sampler=TestSampler,
         val_sampler=TestSampler,
     )
-    for _ in trainer.train_data_loader:
-        pass
-    for _ in trainer.val_data_loader:
-        pass
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
+    batch_sampler = BatchSampler(
+        test_sampler,
+        batch_size=config.train.train_batch_per_replica,
+        drop_last=False,
+    )
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        batch_sampler=batch_sampler,
+        val_batch_sampler=batch_sampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=TestSampler,
+        val_sampler=TestSampler,
+        batch_sampler=BatchSampler,
+        val_batch_sampler=BatchSampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=test_sampler,
+        val_sampler=test_sampler,
+        batch_sampler=BatchSampler,
+        val_batch_sampler=BatchSampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
 
 
 async def main():
