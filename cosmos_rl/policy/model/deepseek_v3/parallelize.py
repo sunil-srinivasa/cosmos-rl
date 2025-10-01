@@ -41,15 +41,17 @@ from cosmos_rl.policy.kernel.moe.moe import GroupedExpertsDeepEP, MoE
 from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_model import (
     pipeline_model,
 )
-from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_schedules import (
-    _PipelineSchedule,
-)
+
+# from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_schedules import (
+#     _PipelineSchedule,
+# )
 from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.utils.pipelining.pipelining_utils import build_pipeline_schedule
 from cosmos_rl.utils.ulysses import swizzle_cp_forward, ulysses_attn_func
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     checkpoint_wrapper as ptd_checkpoint_wrapper,
 )
+from torch.distributed.pipelining.schedules import _PipelineSchedule
 from transformer_engine.pytorch.attention import DotProductAttention
 
 
@@ -268,7 +270,7 @@ class PipelineParallelConfig:
     schedule: str
 
     # Whether the pipeline schedule must execute the backward pass as well.
-    has_backward: bool
+    # has_backward: bool
 
 
 def parallelize_fn(
@@ -276,7 +278,7 @@ def parallelize_fn(
     parallel_dims: ParallelDims,
     config: CosmosConfig,
     pp_loss_fn: Optional[Callable],
-) -> nn.Module:
+):
     """
     Parallelizes a model (or model part) based on the provided meshes and parallel dimensions.
 
@@ -311,7 +313,7 @@ def parallelize_fn(
 
     if parallel_dims.pp_enabled:
         return model
-    return None, None
+    return None, None, model
 
 
 def parallelize(
@@ -329,6 +331,7 @@ def parallelize(
 
         # Model parts
         model_parts = pipeline_model(model, meshes, parallel_dims, device)
+
         # TODO(ssrinivasa): Verify that parallel_context.pp_mesh.size() is the same as parallel_dims.pp
         num_pipeline_stages = len(model_parts) * parallel_dims.pp
         pp_mesh = meshes["default"]["pp"]
@@ -339,13 +342,13 @@ def parallelize(
             batch_size=config.train.train_batch_per_replica,
             microbatch_size=config.policy.parallelism.pp_micro_batch_size,
             schedule=config.policy.parallelism.pp_schedule,
-            has_backward=True,
+            # has_backward=True,
         )
         pp_variants["validation"] = PipelineParallelConfig(
             batch_size=1,
             microbatch_size=1,
             schedule=config.policy.parallelism.pp_schedule,
-            has_backward=False,
+            # has_backward=False,
         )
 
         # Schedules
@@ -363,8 +366,8 @@ def parallelize(
                 model_parts=model_parts,
                 device=device,
                 loss_fn=pp_loss_fn,
-                has_backward=pp_config.has_backward,
+                # has_backward=pp_config.has_backward,
             )
-        return pp_schedules["train"], pp_schedules["validation"]
+        return pp_schedules["train"], pp_schedules["validation"], model_parts[0]
     else:
         return parallelize_fn(model, parallel_dims, config, pp_loss_fn)
