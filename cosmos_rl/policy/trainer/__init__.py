@@ -116,7 +116,7 @@ class Trainer(CommMixin):
             parallelize_fn, _ = model.parallelize_fn
             # `pp_scheduler` is used for both `sft` and `RLHF`
             # `pp_scheduler_val` is used only for `sft`, since `RLHF` does not require policy model via validation
-            self.pp_scheduler, self.pp_scheduler_val = parallelize_fn(
+            self.pp_scheduler, self.pp_scheduler_val, model = parallelize_fn(
                 model, parallel_dims, config, pp_loss_fn=self.pp_loss_fn
             )
             if not config.train.fsdp_offload:
