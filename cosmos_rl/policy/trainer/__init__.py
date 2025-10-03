@@ -28,6 +28,7 @@ from cosmos_rl.policy.config import Config as CosmosConfig
 from cosmos_rl.policy.kernel.modeling_utils import set_flash_attn_deterministic
 from cosmos_rl.policy.model import ModelRegistry
 from cosmos_rl.policy.trainer.optm import build_optimizers
+from cosmos_rl.utils.activation_offloading import get_act_offloading_ctx_manager
 from cosmos_rl.utils.api_suffix import COSMOS_API_SET_TRACE_PATH_SUFFIX
 from cosmos_rl.utils.checkpoint import CheckpointMananger, upload_folder_to_s3
 from cosmos_rl.utils.fp8.fp8_util import FP8ModelConverter
