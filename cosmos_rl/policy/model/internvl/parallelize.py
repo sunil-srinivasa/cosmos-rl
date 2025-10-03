@@ -16,33 +16,22 @@
 import os
 from typing import Callable, Optional
 
-import cosmos_rl.utils.util as util
 import torch
 import torch.nn as nn
-<<<<<<< HEAD:cosmos_rl/policy/model/internvl/parallelize.py
-from typing import Callable, Optional
-from torch.distributed.device_mesh import DeviceMesh
-from torch.distributed._composable.replicate import replicate
-from torch.distributed.fsdp import CPUOffloadPolicy, fully_shard, MixedPrecisionPolicy
-=======
 from cosmos_rl.patch import PipelineStage, Schedule1F1B, ScheduleGPipe
 from cosmos_rl.policy.config import Config as CosmosConfig
-from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_schedules import (
-    Schedule1F1B,
-    ScheduleGPipe,
-    ScheduleInterleaved1F1B,
-)
-from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_stage import (
-    PipelineStage,
-)
 from cosmos_rl.utils.distributed import ReplicateParallel
 from cosmos_rl.utils.logging import logger
 from cosmos_rl.utils.parallelism import ParallelDims
+from cosmos_rl.utils.ulysses import (
+    swizzle_cp_forward,
+    ulysses_attn_func,
+    ulysses_attn_func_varlen,
+)
+from cosmos_rl.utils.util import str2torch_dtype
 from torch.distributed._composable.replicate import replicate
 from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed.fsdp import CPUOffloadPolicy, MixedPrecisionPolicy, fully_shard
-
-# from torch.distributed.pipelining import PipelineStage, Schedule1F1B, ScheduleGPipe
 from torch.distributed.tensor import Replicate, Shard
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
@@ -52,20 +41,6 @@ from torch.distributed.tensor.parallel import (
     SequenceParallel,
     parallelize_module,
 )
-<<<<<<< HEAD:cosmos_rl/policy/model/internvl/parallelize.py
-from cosmos_rl.utils.distributed import ReplicateParallel
-from cosmos_rl.utils.parallelism import ParallelDims
-from cosmos_rl.utils.logging import logger
-from cosmos_rl.utils.util import str2torch_dtype
-from cosmos_rl.policy.config import Config as CosmosConfig
-from cosmos_rl.patch import PipelineStage, Schedule1F1B, ScheduleGPipe
-from cosmos_rl.utils.ulysses import (
-    ulysses_attn_func,
-    swizzle_cp_forward,
-    ulysses_attn_func_varlen,
-)
-=======
->>>>>>> 79c95ac (PP WIP):cosmos_rl/tools/model/deepseek_v3/parallelize.py
 
 
 def parallelize(
@@ -229,21 +204,11 @@ def parallelize(
                 == 0
             ), "validation_batch must be divisible by pp_micro_batch_size"
             assert (
-<<<<<<< HEAD:cosmos_rl/policy/model/internvl/parallelize.py
-                (
-                    config.validation.batch_size
-                    // config.policy.parallelism.pp_micro_batch_size
-                )
-                % pp_size
-                == 0
-            ), "validation_batch / pp_micro_batch_size must be divisible by pp_size"
-=======
-                config.train.validation_batch_per_replica
+                config.validation.batch_size
                 // config.policy.parallelism.pp_micro_batch_size
             ) % pp_size == 0, (
                 "validation_batch / pp_micro_batch_size must be divisible by pp_size"
             )
->>>>>>> 79c95ac (PP WIP):cosmos_rl/tools/model/deepseek_v3/parallelize.py
             n_val_microbatches = (
                 config.validation.batch_size
                 // config.policy.parallelism.pp_micro_batch_size
@@ -384,17 +349,7 @@ def apply_tp_ep(
 
     # - Apply tensor + sequence parallelism to self-attention
     # - Apply expert parallelism to MLP
-    # for layer_id, transformer_block in model.model.model.layers.items():
-    moe_layer_freq = model.model_args.moe_layer_freq
-    first_k_dense_replace = model.model_args.first_k_dense_replace
-    n_routed_experts = model.model_args.n_routed_experts
-    # n_shared_experts = model.model_args.n_shared_experts
-    for layer_id, transformer_block in enumerate(model.model.model.layers):
-        has_moe = (
-            n_routed_experts is not None
-            and layer_id >= first_k_dense_replace
-            and layer_id % moe_layer_freq == 0
-        )
+    for layer_id, transformer_block in model.model.layers.items():
         layer_plan = {
             "input_layernorm": SequenceParallel(),
             "self_attn": prepare_module_input(
@@ -535,9 +490,9 @@ def apply_compile(model: nn.Module, fullgraph: bool = True):
     Apply torch.compile to each TransformerBlock, which makes compilation efficient due to
     repeated structure. Alternatively one can compile the whole model (after applying DP).
     """
-    for layer_id, transformer_block in model.model.model.layers.named_children():
-        transformer_block = torch.compile(transformer_block, fullgraph=True)
-        model.model.model.layers.register_module(layer_id, transformer_block)
+    for layer_id, transformer_block in model.model.layers.named_children():
+        transformer_block = torch.compile(transformer_block, fullgraph=fullgraph)
+        model.model.layers.register_module(layer_id, transformer_block)
 
     # ``model.visual`` could get deleted by pipeline split
     if model.visual is not None:
@@ -583,7 +538,7 @@ def apply_fsdp(
     if cpu_offload:
         fsdp_config["offload_policy"] = CPUOffloadPolicy()
 
-    for layer_id, transformer_block in model.model.model.layers.items():
+    for layer_id, transformer_block in model.model.layers.items():
         if reshard_after_forward_policy == "always":
             reshard_after_forward = True
         elif reshard_after_forward_policy == "never":
@@ -596,9 +551,7 @@ def apply_fsdp(
             else:
                 # As an optimization, do not reshard after forward for the last
                 # transformer block since FSDP would prefetch it immediately
-                reshard_after_forward = (
-                    int(layer_id) < len(model.model.model.layers) - 1
-                )
+                reshard_after_forward = int(layer_id) < len(model.model.layers) - 1
         else:
             raise ValueError(
                 f"Invalid reshard_after_forward_policy: {reshard_after_forward_policy}."

@@ -19,17 +19,11 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 
+from cosmos_rl.utils.logging import logger
 from cosmos_rl.utils.modelscope import update_config_if_modelscope
 from pydantic import BaseModel, Field, model_validator
 from pydantic.json_schema import GenerateJsonSchema
 from pydantic_core import core_schema
-from datetime import datetime
-from typing import Any, Dict, Union, Optional, List, Literal
-import os
-import json
-import hashlib
-from cosmos_rl.utils.modelscope import update_config_if_modelscope
-from cosmos_rl.utils.logging import logger
 
 
 def config_hash(config: BaseModel) -> str:
@@ -797,7 +791,9 @@ class MultiTurnRolloutConfig(BaseModel):
     def check_params_value(self):
         if self.enable_tools:
             if self.add_generation_prompt:
-                assert not self.continue_final_message, "continue_final_message must be False when add_generation_prompt is True"
+                assert (
+                    not self.continue_final_message
+                ), "continue_final_message must be False when add_generation_prompt is True"
         return self
 
 
