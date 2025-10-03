@@ -37,9 +37,9 @@ from huggingface_hub.utils import disable_progress_bars, enable_progress_bars
 from typing import Dict, Optional
 import cosmos_rl.utils.util as util
 from cosmos_rl.utils.profiler import CosmosProfiler
-from cosmos_rl.utils.api_suffix import COSMOS_API_SET_TRACE_PATH_SUFFIX
 from cosmos_rl.utils.fp8.fp8_util import FP8ModelConverter
 from cosmos_rl.policy.kernel.modeling_utils import set_flash_attn_deterministic
+from cosmos_rl.utils.activation_offloading import get_act_offloading_ctx_manager
 
 
 class Trainer(CommMixin):
@@ -146,14 +146,16 @@ class Trainer(CommMixin):
         self.ckpt_manager = CheckpointMananger(
             config, self.parallel_dims, self.global_rank
         )
+        self.act_offloading_ctx_manager = get_act_offloading_ctx_manager(
+            self.model, config.train.activation_offload
+        )
+
         # profiler is initialized after the init_comm()
         self.profiler = CosmosProfiler(
             config,
             parallel_dims,
             replica_name=self.replica_name,
-            alternative_urls=self.get_alternative_urls(
-                COSMOS_API_SET_TRACE_PATH_SUFFIX
-            ),
+            api_client=self.api_client,
         )
 
         self.report_data = {}
@@ -238,7 +240,9 @@ class Trainer(CommMixin):
             logger.info(
                 f"Prepare to exporting safetensors to {path} at rank {self.global_rank}"
             )
-        torch.distributed.barrier()
+
+        if not self.parallel_dims.dp_replicate_enabled:
+            torch.distributed.barrier()
 
         def get_tensor_size(tensor):
             """Get the size of the tensor in bytes."""
@@ -350,7 +354,8 @@ class Trainer(CommMixin):
             merged_manifest = manifest
             total_tensor_size = total_chunk_size
 
-        torch.distributed.barrier()
+        if not self.parallel_dims.dp_replicate_enabled:
+            torch.distributed.barrier()
 
         def upload_handler(config, is_final, path, rel_path, max_retries=3):
             """Handle the upload of the model to huggingface and s3."""

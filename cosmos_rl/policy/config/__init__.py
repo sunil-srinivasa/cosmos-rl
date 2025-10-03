@@ -22,6 +22,7 @@ import os
 import json
 import hashlib
 from cosmos_rl.utils.modelscope import update_config_if_modelscope
+from cosmos_rl.utils.logging import logger
 
 
 def config_hash(config: BaseModel) -> str:
@@ -112,7 +113,7 @@ class SFTDataConfig(BaseModel):
     )
 
     dataloader_shuffle: bool = Field(
-        default=False,
+        default=True,
         description="Shuffle the dataloader. If False, the dataloader will be used in the order it is loaded.",
     )
     enable_dataset_cache: bool = Field(
@@ -151,6 +152,10 @@ class CheckpointConfig(BaseModel):
 
     save_freq: int = Field(
         default=20, description="Checkpoint save frequency for training steps"
+    )
+    save_freq_in_epoch: int = Field(
+        default=0,
+        description="Checkpoint save frequency for training epochs. Default to 0 (disabled).",
     )
     save_mode: str = Field(
         default="async",
@@ -203,8 +208,10 @@ class CheckpointConfig(BaseModel):
             raise ValueError(
                 f"Invalid save_mode: {self.save_mode}. Must be one of ['async', 'sync']"
             )
-        if self.save_freq <= 0:
-            raise ValueError(f"save_freq must be greater than 0, got {self.save_freq}")
+        if self.save_freq_in_epoch <= 0 and self.save_freq <= 0:
+            raise ValueError(
+                f"save_freq must be greater than 0 when save_freq_in_epoch disabled, got {self.save_freq}"
+            )
         return self
 
 
@@ -251,6 +258,10 @@ class GrpoConfig(BaseModel):
         default=None,
         description="Number of batches loaded in advance by each worker.",
     )
+    dataloader_batch_size: Optional[int] = Field(
+        default=1,
+        description="Batch size for each iteration of the dataloader for when fetch prompts from controller. This is only the setting of the dataloader iterator on the controller side.",
+    )
     prompt_column_name: str = Field(
         default="",
         description="Column name for prompt",
@@ -262,6 +273,10 @@ class GrpoConfig(BaseModel):
     reward_function: Union[str, List[str], Dict[str, float]] = Field(
         default_factory=lambda: ["single_choice"],
         description="Reward functions for the model. Currently support `single_choice`, `boxed_math`, and `format`. You can add weight to each reward function by passing a dict, e.g., {'single_choice': 0.9, 'format': 0.1}",
+    )
+    filter_reward_metric: Union[str, List[str]] = Field(
+        default_factory=list,
+        description="Reward function to filter in dynamic sampling for DAPO. If specified, only samples with different this rewards will be used for training. If None, no filtering will be applied.",
     )
     temperature: float = Field(
         default=1.0,
@@ -345,6 +360,11 @@ class GrpoConfig(BaseModel):
         description="Enable fully synchronized (on-policy) rollout. If set to True, the rollout engine will wait until the expected weight version is updated before next generation starts.",
     )
 
+    no_outdated_rollout: bool = Field(
+        default=False,
+        description="Disable outdated rollout. If set to True, the rollout engine will stop generating rollouts if the weight outdated.",
+    )
+
     min_filter_prefix_tokens: Optional[int] = Field(
         default=None,
         description="Minimum number of tokens to filter the prefix tokens for the rollouts inside the same group. "
@@ -367,6 +387,13 @@ class GrpoConfig(BaseModel):
         assert (
             len(self.reward_function) > 0
         ), "reward_function must be a dict of reward functions"
+        if isinstance(self.filter_reward_metric, str):
+            self.filter_reward_metric = [self.filter_reward_metric]
+        if self.dataloader_batch_size is not None and self.dataloader_batch_size <= 0:
+            logger.warning(
+                "dataloader_batch_size is not positive so disable it as None."
+            )
+            self.dataloader_batch_size = None
         return self
 
 
@@ -471,6 +498,11 @@ class TrainingConfig(BaseModel):
         description="The data type for forward/backward. Outside forward/backward, params are in `master_dtype`",
         choices=["bfloat16", "float16", "float32"],
     )
+    transfer_dtype: str = Field(
+        default=None,
+        description="The data type for transfer parameters between Policy and Rollout.",
+        choices=["bfloat16", "float16", "float32"],
+    )
 
     fsdp_reduce_dtype: str = Field(
         default="float32",
@@ -491,21 +523,6 @@ class TrainingConfig(BaseModel):
     train_batch_per_replica: int = Field(
         default=8,
         description="The batch size for training per iteration in one replica, this is the local batch size for each gradient accumulation step",
-    )
-
-    # --------- Validation ---------
-
-    enable_validation: bool = Field(
-        default=False,
-        description="Enable validation during training.",
-    )
-    validation_step: int = Field(
-        default=20,
-        description="Validation frequency during training, in terms of training steps",
-    )
-    validation_batch_per_replica: int = Field(
-        default=24,
-        description="The batch size for validation per iteration in one replica.",
     )
 
     # --------- Engineering ---------
@@ -535,6 +552,10 @@ class TrainingConfig(BaseModel):
         default=False,
         description="Whether to use deterministic training. If set to True, will use deterministic training, which is expected to be slower.",
     )
+    activation_offload: bool = Field(
+        default=False,
+        description="Whether to use activation offload",
+    )
 
     seed: Optional[int] = Field(
         default=None,
@@ -546,6 +567,11 @@ class TrainingConfig(BaseModel):
     max_num_steps: Optional[int] = Field(
         default=None,
         description="Optional upper bound on total training steps. If set, training stops when either this step count or the epoch-based limit is reached (whichever comes first). Handy for quick smoke tests.",
+    )
+
+    sequence_packing: bool = Field(
+        default=False,
+        description="Whether to enable sequence packing for training. If set to True, the input sequences will be packed into a single tensor for training.",
     )
 
     @model_validator(mode="after")
@@ -648,22 +674,27 @@ class LoraConfig(BaseModel):
 
 class PolicyConfig(BaseModel):
     parallelism: ParallelismConfig = Field(default_factory=ParallelismConfig)
+
     model_name_or_path: str = Field(
         # default="Qwen/Qwen2.5-3B-Instruct",  #'Qwen/Qwen2.5-VL-7B-Instruct'
         default="Qwen/Qwen2.5-VL-7B-Instruct",
         description="The model name or path, compatible with huggingface model name or local path",
     )
+
     model_revision: Optional[str] = Field(
         default=None,
         description="The revision of the model to use",
     )
+
     model_max_length: int = Field(
         default=4096,
         description="The maximum length for training, longer than this will be ignored for training stability",
     )
+
     model_gradient_checkpointing: bool = Field(
         default=True, description="Whether to use gradient checkpointing"
     )
+
     lora: LoraConfig | None = Field(default=None, description="LoRA configuration")
     trainable_map: Optional[Dict[str, bool]] = Field(
         default=None,
@@ -721,7 +752,52 @@ class SamplingConfig(BaseModel):
     )
 
 
+class MultiTurnRolloutConfig(BaseModel):
+    enable: bool = Field(
+        default=False, description="Whether to enable multi-turn rollout."
+    )
+    enable_tools: bool = Field(
+        default=False, description="Whether to enable tools in multi-turn rollout."
+    )
+    enable_thinking: bool = Field(
+        default=False, description="Whether to enable thinking in multi-turn rollout."
+    )
+    custom_chat_template_path: Optional[str] = Field(
+        default=None, description="The path to the custom chat template in chat."
+    )
+    max_assistant_turns: int = Field(
+        default=5, description="Max assistant turn count for multi-turn rollout."
+    )
+    add_generation_prompt: bool = Field(
+        default=True,
+        description="Whether to add generation prompt in multi-turn rollout.",
+    )
+    continue_final_message: bool = Field(
+        default=False,
+        description="Whether to continue the final message in multi-turn rollout.",
+    )
+
+    @model_validator(mode="after")
+    def check_params_value(self):
+        if self.enable_tools:
+            if self.add_generation_prompt:
+                assert not self.continue_final_message, "continue_final_message must be False when add_generation_prompt is True"
+        return self
+
+
 class ValidationConfig(BaseModel):
+    enable: bool = Field(
+        default=False,
+        description="Enable validation during training.",
+    )
+    freq: int = Field(
+        default=20,
+        description="Validation frequency during training, in terms of training steps",
+    )
+    batch_size: Optional[int] = Field(
+        default=None,
+        description="Batch size for validation, will use the same batch size as training if not set.",
+    )
     dataset: DatasetConfig = Field(
         default_factory=DatasetConfig,
         description="Dataset configuration for validation. It includes dataset name, subset, revision and test split.",
@@ -748,7 +824,7 @@ class ValidationConfig(BaseModel):
         description="Max output length of rollout generation during validation.",
     )
     reward_function: Union[str, List[str], Dict[str, float]] = Field(
-        default_factory=lambda: ["single_choice"],
+        default=[],
         description="Reward functions for the model. Currently support `single_choice`, `boxed_math`, and `format`. You can add weight to each reward function by passing a dict, e.g., {'single_choice': 0.9, 'format': 0.1}",
     )
 
@@ -758,8 +834,8 @@ class ValidationConfig(BaseModel):
             self.reward_function = {self.reward_function: 1.0}
         elif isinstance(self.reward_function, list):
             self.reward_function = {k: 1.0 for k in self.reward_function}
-        assert (
-            len(self.reward_function) > 0
+        assert isinstance(
+            self.reward_function, dict
         ), "reward_function must be a dict of reward functions"
         return self
 
@@ -789,10 +865,6 @@ class RolloutConfig(BaseModel):
     )
 
     batch_size: int = Field(default=1, description="Batch size for rollout.")
-    val_batch_size: Optional[int] = Field(
-        default=None,
-        description="Batch size for rollout generation during validation.",
-    )
 
     quantization: str = Field(
         default="none",
@@ -812,6 +884,16 @@ class RolloutConfig(BaseModel):
         default="vllm",
         description="Backend for rollout. Currently support `vllm` and `trtllm`.",
         choices=["vllm", "trtllm"],
+    )
+
+    multi_turn_config: MultiTurnRolloutConfig = Field(
+        default_factory=MultiTurnRolloutConfig,
+        description="Configuration for multi-turn rollout.",
+    )
+
+    reference_answer_in_local: bool = Field(
+        default=False,
+        description="Whether to store the dataset in local rollout worker for fetching reference answer.",
     )
 
     @model_validator(mode="after")
@@ -948,10 +1030,13 @@ class Config(BaseModel):
                     "Invalid config: GRPO with LoRA requires policy.parallelism.tp_size == 1."
                 )
 
-        if self.train.train_policy.type == "grpo":
-            # Handle for evaludation configuration.
-            if isinstance(self.validation.dataset.split, str):
-                self.validation.dataset.split = [self.validation.dataset.split]
+        # Handle for evaludation configuration.
+        if isinstance(self.validation.dataset.split, str):
+            self.validation.dataset.split = [self.validation.dataset.split]
+
+        if self.train.transfer_dtype is None:
+            # Default use param_dtype as transfer_dtype
+            self.train.transfer_dtype = self.train.param_dtype
         return self
 
 

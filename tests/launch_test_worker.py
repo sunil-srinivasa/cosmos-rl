@@ -16,7 +16,7 @@
 import os
 import torch
 import time
-from multiprocessing import shared_memory
+from multiprocessing import shared_memory, Event as mp_Event
 import numpy as np
 import torch.distributed as dist
 import toml
@@ -49,6 +49,7 @@ from cosmos_rl.utils.distributed import (
     init_distributed,
     destroy_distributed,
 )
+from cosmos_rl.dispatcher.api.client import APIClient
 from cosmos_rl.dispatcher.protocol import Role
 from cosmos_rl.policy.model.gpt.weight_converter import convert_weight_from_hf
 from cosmos_rl.policy.model.gpt.weight_mapper import GPTWeightMapper
@@ -65,9 +66,54 @@ from cosmos_rl.utils.pynccl import (
 import cosmos_rl.utils.distributed as dist_util
 from cosmos_rl.utils.logging import logger
 import asyncio
+from cosmos_rl.dispatcher.data.packer import (
+    DecoderOnlyLLMDataPacker,
+)
+import cosmos_rl.utils.distributed as dist_utils
+import uuid
+from cosmos_rl.utils.ulysses import (
+    slice_inputs_for_ulysses,
+)
+from cosmos_rl.utils.sequence_packing import (
+    pack_sequences_info_collect,
+    pack_sequences_for_masks,
+    pack_sequences_for_labels,
+)
+from torch.utils.data import DataLoader, DistributedSampler, Sampler, BatchSampler
+from cosmos_rl.policy.trainer.sft_trainer import collate_fn, construct_dataset
+from torch.utils.data import Dataset
+from datasets import concatenate_datasets
+from typing import List
+from cosmos_rl.dispatcher.data.schema import RLPayload
+from cosmos_rl.rollout.schema import RolloutResult
+from cosmos_rl.dispatcher.algo.reward import boxed_math_reward_fn
+import multiprocessing as mp
 
 POLICY_WORLD_SIZE = 4
 ROLLOUT_WORLD_SIZE = 4
+
+
+class TestDataset(Dataset):
+    def __init__(self, config: CosmosConfig):
+        pass
+
+    def setup(
+        self,
+        config: CosmosConfig,
+        tokenizer: AutoTokenizer,
+    ):
+        dataset = util.load_data_from_disk_or_hf(
+            config.train.train_policy.dataset.name,
+            config.train.train_policy.dataset.subset,
+            config.train.train_policy.dataset.revision or None,
+        )
+        dataset_list = []
+        for split_name in config.train.train_policy.dataset.split:
+            dataset_list.append(dataset[split_name])
+        self.dataset = concatenate_datasets(dataset_list)
+
+    def __getitem__(self, idx):
+        return self.dataset[idx]
 
 
 class TestModel:
@@ -246,6 +292,7 @@ class TestRollout:
         self.ref_compatibale_map = compatibale_map
         self.quantization_type = None
         self.config = CosmosConfig()
+        self.config.train.param_dtype = "float32"  # keep the same as policy above.
 
         self.vllm_weight_inplace_view_map = compatibale_map
         self.recv_param_key_n_rank_list = compatibale_list
@@ -269,7 +316,9 @@ class TestRollout:
 
         self.rollout = vLLMRollout(self.config, tokenizer)
 
+        self.total_temp_tensor_pool = []
         self.prepare_trainable_params()
+        self.validation_flag = threading.Event()
 
     def get_underlying_model(self):
         return None
@@ -279,6 +328,9 @@ class TestRollout:
 
     def prepare_trainable_params(self):
         self.trainable_params = self.model.get_trainable_params()
+
+    def lazy_initialize_rollout_engine(self, load_format):
+        pass
 
 
 async def generate_send_recv_insts(model: TestModel, is_send: bool, global_rank: int):
@@ -550,7 +602,11 @@ def policy_to_policy_sync_common(
         def dummy(self, *args, **kwargs):
             pass
 
-        def dummy_init_nccl(self, replica_name, global_rank, controller_hosts):
+        def dummy_init_comm(self):
+            self.api_client = APIClient(self.role, ["localhost"], 8000)
+            self.shutdown_mp_signal = mp_Event()  # Must be a multiprocessing event
+
+        def dummy_init_nccl(self, replica_name, global_rank, api_client):
             pass
 
         HighAvailabilitylNccl.__init__ = dummy_init_nccl
@@ -582,11 +638,10 @@ def policy_to_policy_sync_common(
             def shutdown(self):
                 pass
 
-        Trainer.init_comm = dummy
+        Trainer.init_comm = dummy_init_comm
         CommMixin.init_redis = dummy
         CommMixin.start_heartbeat = dummy
         CommMixin.replica_name = policy_name
-        CommMixin.remote_hosts = ["localhost:0"]
         CommMixin.shutdown_signal = threading.Event()
         GRPOTrainer.prepare_shard_infos_for_weight_sync_insts = dummy
         policy = GRPOTrainer(cosmos_config, parallel_dims)
@@ -865,6 +920,7 @@ def run_dummy_rollout():
     def dummy_rollout2rollout_broadcast(self, broadcast_command):
         if broadcast_command.replica_should_stop():
             self.shutdown_signal.set()
+            self.shutdown_mp_signal.set()
 
     def dummy(self):
         pass
@@ -879,7 +935,7 @@ def run_dummy_rollout():
     vLLMRolloutWorker.get_rollout_command_handler = get_rollout_command_handler
     vLLMRolloutWorker.prepare_shard_infos_for_weight_sync_insts = dummy
 
-    def dummy_init(self, config, tokenizer, **kwargs):
+    def dummy_init(self, config: CosmosConfig, tokenizer, **kwargs):
         class Llm_engine:
             def step(self, *args, **kwargs):
                 pass
@@ -887,19 +943,22 @@ def run_dummy_rollout():
         class Rollout_engine:
             llm_engine = Llm_engine()
 
+        self.rollout_config = config.rollout
         self.rollout_engine = Rollout_engine()
         self.eos_token_ids = [0]
         self._engine_initialized = True
 
         def rollout_generation(
             self,
-            prompt_id_and_payload_list,
+            payloads: List[RLPayload],
             stream,
             data_packer,
             sampling_params,
-        ):
-            payloads = [x[1] for x in prompt_id_and_payload_list]
-            completions_per_prompt = [[x] for x in payloads]
+        ) -> List[RolloutResult]:
+            completions_per_prompt = [
+                RolloutResult(prompt=payload.prompt, completions=[payload.prompt])
+                for payload in payloads
+            ]
             return completions_per_prompt
 
         self.rollout_generation = types.MethodType(rollout_generation, self)
@@ -1012,7 +1071,7 @@ def run_rollout_parallelism_extract(rank, fsdp, tp, pp):
     assert len(mapper.mapper_group) == 1, "Only one mapper group expected"
 
     recv_param_key_n_rank_list = []
-    _, grouped_recv_param_key_n_rank_list = weight_mapper.rollout_prepare_recv(
+    _, grouped_recv_param_key_n_rank_list = weight_mapper.cosmos_rollout_prepare_recv(
         rollout.get_underlying_model()
     )
     for group in grouped_recv_param_key_n_rank_list:
@@ -1217,6 +1276,606 @@ async def parallel_map_check():
                     p_rank_max = p_rank
 
 
+def run_sft_for_sequence_packing(fsdp, tp, cp):
+    def train_test(self, packing_seq):
+        train_dataset, _ = construct_dataset(
+            config,
+            tokenizer=self.tokenizer,
+            data_packer=self.data_packer,
+            user_provided_dataset=None,
+        )
+        train_sampler = DistributedSampler(
+            train_dataset,
+            num_replicas=self.dp_world_size,
+            rank=self.dp_rank,
+            shuffle=False,
+            drop_last=False,
+        )
+
+        def get_train_data_loader(sampler: Sampler[int]):
+            return DataLoader(
+                train_dataset,
+                batch_size=config.train.train_batch_per_replica,
+                shuffle=False,
+                num_workers=config.train.train_policy.dataloader_num_workers,
+                prefetch_factor=config.train.train_policy.dataloader_prefetch_factor,
+                sampler=sampler,
+                collate_fn=collate_fn,
+                drop_last=False,
+            )
+
+        self.train_data_loader = get_train_data_loader(train_sampler)
+        losses = []
+        for global_batch in self.train_data_loader:
+            acc_loss = torch.zeros(1, device=self.device)
+            self.optimizers.zero_grad()
+            global_batch_size = len(global_batch)
+            # split global_batch into mini_batches
+            mini_batch_begin_idxs = list(
+                range(
+                    0,
+                    global_batch_size,
+                    self.config.train.train_policy.mini_batch,
+                )
+            )
+            for i in mini_batch_begin_idxs:
+                raw_batch = global_batch[
+                    i : i + self.config.train.train_policy.mini_batch
+                ]
+                max_len = min(
+                    self.config.policy.model_max_length,
+                    self.data_packer.sft_compute_max_len(raw_batch),
+                )
+                if self.seq_len_multiple > 1:
+                    max_len = (
+                        (max_len + self.seq_len_multiple - 1)
+                        // self.seq_len_multiple
+                        * self.seq_len_multiple
+                    )
+                batch = self.data_packer.sft_collate_fn(
+                    raw_batch,
+                    computed_max_len=max_len,
+                    pad_token_id=self.tokenizer.pad_token_id,
+                    ignore_label_id=-100,
+                )
+                self.model.train()
+                for k, v in batch.items():
+                    batch[k] = v.to(self.device) if isinstance(v, torch.Tensor) else v
+                labels = batch.pop("label_ids")
+                position_ids, input_ids, pos_seq_dim = self.model.get_position_ids(
+                    **batch
+                )
+                batch["position_ids"] = position_ids
+                padding_mask = batch.get("padding_mask", None)
+                if packing_seq:
+                    # Prepare for the sequence packing information.
+                    packed_args = pack_sequences_info_collect(
+                        batch["input_ids"],
+                        pad_token_id=self.tokenizer.pad_token_id,
+                        label_ids=labels,
+                        ignore_label_id=-100,
+                        seq_len_multiple=self.seq_len_multiple,
+                    )
+                    batch.update(packed_args)
+                    labels = pack_sequences_for_labels(labels, batch["valid_input_len"])
+                    packed_args = pack_sequences_for_masks(
+                        batch["valid_input_len"], batch["valid_input_len"]
+                    )
+                    batch.update(packed_args)
+
+                if self.parallel_dims.cp_enabled and not packing_seq:
+                    [input_ids, position_ids, padding_mask] = slice_inputs_for_ulysses(
+                        [input_ids, position_ids, padding_mask],
+                        self.parallel_dims.mesh["cp"],
+                        seq_dims=[1, pos_seq_dim, 1],
+                    )
+                    batch["input_ids"] = input_ids
+                    batch["position_ids"] = position_ids
+                    if padding_mask is not None:
+                        batch["padding_mask"] = padding_mask
+
+                if self.parallel_dims.cp_enabled and packing_seq:
+                    # Slice for cp after embedding generation and sequence packing in the model forward later.
+                    batch["cp_mesh"] = self.parallel_dims.mesh["cp"]
+                logits = self.model(**batch)
+
+                loss = self.loss_fn(
+                    logits,
+                    labels,
+                    output_packing_mask=batch.get("input_packing_mask", None),
+                    target_packing_mask=batch.get("label_packing_mask", None),
+                    loss_scaling_factor=1.0 / len(mini_batch_begin_idxs),
+                )
+                loss.backward()
+                acc_loss += loss.detach()
+                all_params = [
+                    p
+                    for m in [model for model in self.model_parts if model is not None]
+                    for p in m.parameters()
+                ]
+                dist_util.gradient_norm_clipping(
+                    all_params,
+                    self.config.train.optm_grad_norm_clip,
+                    foreach=True,
+                    pp_mesh=self.parallel_dims.mesh["pp"]
+                    if self.parallel_dims.pp_enabled
+                    else None,
+                    return_norm_only=(self.config.train.optm_grad_norm_clip <= 0.0),
+                )
+                self.optimizers.step()
+                self.lr_schedulers.step()
+                self.train_step += 1
+                if (
+                    self.parallel_dims.dp_replicate_enabled
+                    or self.parallel_dims.dp_shard_enabled
+                    or self.parallel_dims.cp_enabled
+                ):
+                    global_avg_loss, global_max_loss = (  # noqa: F841
+                        dist_util.dist_mean(acc_loss, self.parallel_dims.mesh["dp_cp"]),
+                        dist_util.dist_max(acc_loss, self.parallel_dims.mesh["dp_cp"]),
+                    )
+                else:
+                    global_avg_loss = global_max_loss = acc_loss.item()  # noqa: F841
+
+                if util.is_master_rank(self.parallel_dims, self.global_rank):
+                    losses.append(global_avg_loss)
+                if self.train_step >= 8:
+                    return losses
+        return losses
+
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(
+        cur_dir,
+        "configs",
+        "test_simple_sft.toml",
+    )
+    with open(config_path, "r") as f:
+        config_dict = toml.load(f)
+    config = CosmosConfig.from_dict(
+        config_dict,
+    )
+    config.policy.parallelism.dp_shard_size = fsdp
+    config.policy.parallelism.tp_size = tp
+    config.policy.parallelism.cp_size = cp
+    logger.info(f"[Test] sequence packing with fsdp {fsdp}, tp {tp}, cp {cp}")
+    parallel_dims = ParallelDims.from_config(
+        parallesim_config=config.policy.parallelism
+    )
+    init_distributed()
+    parallel_dims.build_mesh(device_type="cuda")
+
+    def dummy(self):
+        self.replica_name = str(dist_utils.broadcast_object_cpu(uuid.uuid4()))
+        self.api_client = APIClient(self.role, ["0.0.0.0"], 8000)
+        hf_config = util.retry(AutoConfig.from_pretrained)(
+            self.config.policy.model_name_or_path, trust_remote_code=True
+        )
+        model_type = hf_config.model_type
+        logger.info(f"model type {model_type}")
+        self.data_packer = DecoderOnlyLLMDataPacker()
+        self.data_packer.setup(self.config, self.tokenizer)
+        pass
+
+    CommMixin.init_comm = dummy
+    trainer = SFTTrainer(config=config, parallel_dims=parallel_dims)
+    non_packing_losses = train_test(trainer, False)
+    trainer = SFTTrainer(config=config, parallel_dims=parallel_dims)
+    packing_losses = train_test(trainer, True)
+    if util.is_master_rank(trainer.parallel_dims, trainer.global_rank):
+        assert len(non_packing_losses) == 8
+        assert len(packing_losses) == 8
+        logger.info(f"[Test] non_packing_losses: {non_packing_losses}")
+        logger.info(f"[Test] packing_losses: {packing_losses}")
+        double_actual = torch.tensor(non_packing_losses).double().view(-1)
+        double_expected = torch.tensor(packing_losses).double().view(-1)
+        cosine_similarity = torch.nn.functional.cosine_similarity(
+            double_actual, double_expected, dim=0, eps=1e-5
+        )
+        assert (
+            np.allclose(non_packing_losses, packing_losses, atol=1e-2, rtol=1e-2)
+            or cosine_similarity > 0.999
+        )
+
+
+def run_sft_validation():
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(
+        cur_dir,
+        "configs",
+        "test_simple_sft.toml",
+    )
+    with open(config_path, "r") as f:
+        config_dict = toml.load(f)
+    config = CosmosConfig.from_dict(
+        config_dict,
+    )
+    parallel_dims = ParallelDims.from_config(
+        parallesim_config=config.policy.parallelism
+    )
+    init_distributed()
+    parallel_dims.build_mesh(device_type="cuda")
+
+    def dummy(self):
+        self.replica_name = str(dist_utils.broadcast_object_cpu(uuid.uuid4()))
+        self.api_client = APIClient(self.role, ["0.0.0.0"], 8000)
+        hf_config = util.retry(AutoConfig.from_pretrained)(
+            self.config.policy.model_name_or_path, trust_remote_code=True
+        )
+        model_type = hf_config.model_type
+        logger.info(f"model type {model_type}")
+        self.data_packer = DecoderOnlyLLMDataPacker()
+        self.data_packer.setup(self.config, self.tokenizer)
+        pass
+
+    CommMixin.init_comm = dummy
+    trainer = SFTTrainer(config=config, parallel_dims=parallel_dims)
+    assert len(trainer.val_data_loader) == 29195
+
+    class TestDatasetSFTVal(TestDataset):
+        def setup(
+            self,
+            config: CosmosConfig,
+            tokenizer: AutoTokenizer,
+        ):
+            dataset = util.load_data_from_disk_or_hf(
+                config.validation.dataset.name,
+                config.validation.dataset.subset,
+                config.validation.dataset.revision or None,
+            )
+            dataset_list = []
+            for split_name in config.validation.dataset.split:
+                dataset_list.append(dataset[split_name])
+            self.dataset = concatenate_datasets(dataset_list)
+
+        def __len__(self):
+            return 1
+
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        val_dataset=TestDatasetSFTVal,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+    )
+    assert len(trainer.val_data_loader) == 1
+    trainer.validate()
+
+
+def run_reward_check():
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(
+        cur_dir,
+        "configs",
+        "test_simple_grpo.toml",
+    )
+    with open(config_path, "r") as f:
+        config_dict = toml.load(f)
+    config = CosmosConfig.from_dict(
+        config_dict,
+    )
+
+    config.train.train_policy.dataset.name = os.path.join(
+        cur_dir, config.train.train_policy.dataset.name
+    )
+    logger.info(f"Using model from {config.policy.model_name_or_path}")
+    # config.rollout.n_generation = 2
+    parallel_dims = ParallelDims.from_config(
+        parallesim_config=config.rollout.parallelism
+    )
+    init_distributed()
+    parallel_dims.build_mesh(device_type="cuda")
+
+    def dummy(self):
+        self.replica_name = str(dist_utils.broadcast_object_cpu(uuid.uuid4()))
+        self.api_client = APIClient(self.role, ["0.0.0.0"], 8000)
+        self.data_packer = DecoderOnlyLLMDataPacker()
+        self.data_packer.setup(self.config, self.tokenizer)
+        self.val_data_packer = None
+        self.shutdown_signal = threading.Event()
+        self.shutdown_mp_signal = mp.Event()  # Must be a multiprocessing event
+        self.heartbeat_thread = None
+
+    def report_rollouts(self, block=False):
+        while True:
+            payloads, is_validation, step, empty = (
+                self.reward_dispatcher.dequeue_rewards_cal()
+            )
+            if not hasattr(self, "_cnt"):
+                self._cnt = 0
+            if payloads is not None:
+                self._cnt += 1
+                assert len(payloads) == 1
+                assert len(payloads[0].completions) == config.rollout.n_generation
+                assert len(payloads[0].rewards) == config.rollout.n_generation
+                assert len(payloads[0].advantages) == config.rollout.n_generation
+                logger.info(
+                    f"Got {payloads[0].rewards} {payloads[0].advantages} from reward calculation at {self._cnt}"
+                )
+                if is_validation:
+                    break
+            elif not block or empty:
+                break
+        if self._cnt >= 1:
+            self.shutdown_signal.set()
+            self.shutdown_mp_signal.set()
+
+        shutdown_signal = dist_util.broadcast_object_cpu(self.shutdown_signal.is_set())
+        if shutdown_signal:
+            self.shutdown_signal.set()
+            self.shutdown_mp_signal.set()
+
+        return payloads, is_validation, step, empty
+
+    vLLMRolloutWorker.report_rollouts = report_rollouts
+    vLLMRolloutWorker.send_end_signal = lambda self: None
+
+    def consume_command(
+        self,
+        cmd_pred=None,
+    ):
+        pass
+
+    CommMixin.init_comm = dummy
+    CommMixin.init_redis = lambda self: None
+    vLLMRolloutWorker.prepare_shard_infos_for_weight_sync_insts = lambda self: None
+    vLLMRolloutWorker.consume_command = consume_command
+    rollout = vLLMRolloutWorker(config, parallel_dims=parallel_dims)
+
+    class TestDatasetReward(TestDataset):
+        def __len__(self):
+            return 1
+
+    def custom_reward_fn(to_be_evaluated, reference, *args, **kwargs) -> float:
+        assert isinstance(reference, str), "Reference answer should be a string"
+        reward = boxed_math_reward_fn(to_be_evaluated, reference, *args, **kwargs)
+        # Add more reward functions here
+        # ...
+        return reward
+
+    rollout.setup(
+        dataset=TestDatasetReward,
+        reward_fns=[custom_reward_fn],
+        num_workers=1,
+    )
+    rollout.lazy_initialize_rollout_engine("auto")
+
+    dataset = TestDatasetReward(config)
+    dataset.setup(tokenizer=rollout.tokenizer, config=config)
+    for idx in range(len(dataset)):
+        prompts = [
+            (
+                idx,
+                RLPayload(
+                    prompt=dataset[idx]["prompt"],
+                    reference_answer=dataset[idx]["result"],
+                ),
+            )
+        ]
+        rollout._prompt_queue.put(prompts)
+
+    rollout.state.set_weight_synced()
+    rollout.state.set_prompt_fetch_end()
+    rollout.main_loop()
+    rollout.handle_shutdown()
+
+
+def run_sft_custom_sampler():
+    cur_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(
+        cur_dir,
+        "configs",
+        "test_simple_sft.toml",
+    )
+    with open(config_path, "r") as f:
+        config_dict = toml.load(f)
+    config = CosmosConfig.from_dict(
+        config_dict,
+    )
+    config.train.train_policy.dataloader_shuffle = False
+    parallel_dims = ParallelDims.from_config(
+        parallesim_config=config.policy.parallelism
+    )
+    init_distributed()
+    parallel_dims.build_mesh(device_type="cuda")
+
+    def dummy(self):
+        self.replica_name = str(dist_utils.broadcast_object_cpu(uuid.uuid4()))
+        self.api_client = APIClient(self.role, ["0.0.0.0"], 8000)
+        hf_config = util.retry(AutoConfig.from_pretrained)(
+            self.config.policy.model_name_or_path, trust_remote_code=True
+        )
+        model_type = hf_config.model_type
+        logger.info(f"model type {model_type}")
+        self.data_packer = DecoderOnlyLLMDataPacker()
+        self.data_packer.setup(self.config, self.tokenizer)
+        pass
+
+    CommMixin.init_comm = dummy
+
+    class TestDatasetSampler(TestDataset):
+        def setup(
+            self,
+            config: CosmosConfig,
+            tokenizer: AutoTokenizer,
+        ):
+            dataset = util.load_data_from_disk_or_hf(
+                config.validation.dataset.name,
+                config.validation.dataset.subset,
+                config.validation.dataset.revision or None,
+            )
+            dataset_list = []
+            for split_name in config.validation.dataset.split:
+                dataset_list.append(dataset[split_name])
+            self.dataset = concatenate_datasets(dataset_list)
+
+        def __getitem__(self, idx):
+            return super().__getitem__(idx)["conversation"]
+
+        def __len__(self):
+            return 16
+
+    class TestSampler(Sampler[int]):
+        def __init__(
+            self,
+            dataset: Dataset,
+            num_replicas=None,
+            rank=None,
+            shuffle: bool = True,
+            seed: int = 0,
+            drop_last: bool = False,
+        ):
+            self.base = DistributedSampler(
+                dataset,
+                num_replicas=num_replicas,
+                rank=rank,
+                shuffle=shuffle,
+                drop_last=drop_last,
+            )
+
+        def __iter__(self):
+            it = iter(self.base)
+            dp_rank = dist.get_rank() // 2
+            if not hasattr(self, "checked"):
+                cnt = 0
+                for i in it:
+                    assert (i - dp_rank) % 2 == 0
+                    cnt += 1
+                assert cnt == 8
+                self.checked = True
+            it = iter(self.base)
+            return it
+
+        def __len__(self) -> int:
+            base_len = len(self.base)
+            return base_len
+
+        def set_epoch(self, epoch: int):
+            self.base.set_epoch(epoch)
+
+    dataset = TestDatasetSampler(config)
+    dataset.setup(config=config, tokenizer=None)
+
+    dp_rank, dp_world_size = 0, 1
+    if parallel_dims.dp_enabled:
+        dp_rank = parallel_dims.mesh["dp"].get_local_rank()
+        dp_world_size = parallel_dims.mesh["dp"].size()
+
+    test_sampler = TestSampler(
+        dataset,
+        num_replicas=dp_world_size,
+        rank=dp_rank,
+        shuffle=False,
+        drop_last=False,
+    )
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=test_sampler,
+        val_sampler=test_sampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=TestSampler,
+        val_sampler=TestSampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
+    batch_sampler = BatchSampler(
+        test_sampler,
+        batch_size=config.train.train_batch_per_replica,
+        drop_last=False,
+    )
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        batch_sampler=batch_sampler,
+        val_batch_sampler=batch_sampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=TestSampler,
+        val_sampler=TestSampler,
+        batch_sampler=BatchSampler,
+        val_batch_sampler=BatchSampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
+    trainer = SFTTrainer(
+        config=config,
+        parallel_dims=parallel_dims,
+        dataset=dataset,
+        val_dataset=dataset,
+        val_data_packer=DecoderOnlyLLMDataPacker(),
+        sampler=test_sampler,
+        val_sampler=test_sampler,
+        batch_sampler=BatchSampler,
+        val_batch_sampler=BatchSampler,
+    )
+    cnt = 0
+    for it in trainer.train_data_loader:
+        assert len(it) == 8
+        cnt += 1
+    assert cnt == 1
+    cnt = 0
+    for it in trainer.val_data_loader:
+        assert len(it) == 1
+        cnt += 1
+    assert cnt == 8
+
+
 async def main():
     # Get shared memory name and size from command line arguments
     import argparse
@@ -1260,6 +1919,23 @@ async def main():
         exit(0)
     elif mode == "test_overfit":
         run_overfitting_policy()
+        exit(0)
+    elif mode == "sft_for_sequence_packing":
+        sepc = args.parallel_config
+        fsdp, tp, cp = sepc.split(";")
+        fsdp = int(fsdp.split(":")[1])
+        tp = int(tp.split(":")[1])
+        cp = int(cp.split(":")[1])
+        run_sft_for_sequence_packing(fsdp, tp, cp)
+        exit(0)
+    elif mode == "sft_for_validation":
+        run_sft_validation()
+        exit(0)
+    elif mode == "sft_for_custom_sampler":
+        run_sft_custom_sampler()
+        exit(0)
+    elif mode == "reward_execution_check":
+        run_reward_check()
         exit(0)
 
     # Initialize distributed environment

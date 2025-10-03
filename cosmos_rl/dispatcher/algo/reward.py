@@ -19,10 +19,11 @@ from math_verify.parser import LatexExtractionConfig, ExprExtractionConfig
 from math_verify.errors import TimeoutException
 from transformers import PreTrainedTokenizer
 from cosmos_rl.policy.config import Config
-from typing import Union, Callable
+from typing import Union, Callable, Tuple
 from cosmos_rl.utils.constant import RewardFn
 from cosmos_rl.utils.logging import logger
 from typing import Dict, Optional, List
+from cosmos_rl.dispatcher.data.packer import DataPacker
 
 math_comparer = math_metric(
     gold_extraction_target=(LatexExtractionConfig(),),
@@ -151,6 +152,7 @@ def overlong_reward_fn(
     reference: Union[str, None],
     config: Config,
     tokenizer: PreTrainedTokenizer,
+    **kwargs,
 ) -> float:
     """
     Reward function that checks if the completion is too long (DAPO).
@@ -289,9 +291,50 @@ class Reward:
         tokenier: PreTrainedTokenizer,
         reward_function: Optional[Dict[str, float]] = None,
         explicit_reward_fn: Optional[List[Callable]] = None,
+        explicit_filter_reward_fn: Optional[List[Callable]] = None,
+        data_packer: Optional[DataPacker] = None,
     ):
         self.config = config
         self.tokenizer = tokenier
+        if explicit_filter_reward_fn is None:
+            explicit_filter_reward_fn = config.train.train_policy.filter_reward_metric
+        if reward_function is None:
+            reward_function = config.train.train_policy.reward_function
+
+        self.filter_reward_fns = []
+        index_for_filter_in_explicit = []
+        filter_reward_name_to_weight = {}
+        if explicit_filter_reward_fn is not None:
+            explicit_filter_reward_fn = (
+                explicit_filter_reward_fn
+                if isinstance(explicit_filter_reward_fn, list)
+                else [explicit_filter_reward_fn]
+            )
+            for item in explicit_filter_reward_fn:
+                if isinstance(item, tuple):
+                    fn, weight = item
+                else:
+                    fn = item
+                    weight = 1.0
+                if isinstance(fn, str):
+                    if fn not in REWARD_FUNC_MAPPING:
+                        raise ValueError(f"Filtered reward function {fn} not found.")
+                    if fn not in reward_function:
+                        self.filter_reward_fns.append((REWARD_FUNC_MAPPING[fn], weight))
+                    else:
+                        filter_reward_name_to_weight[fn] = weight
+                elif isinstance(fn, int):
+                    assert (
+                        explicit_reward_fn is not None
+                    ), "When filtered reward function is given as index, explicit_reward_fn must be provided."
+                    index_for_filter_in_explicit.append((fn, weight))
+                elif isinstance(fn, Callable):
+                    self.filter_reward_fns.append((fn, weight))
+                else:
+                    raise ValueError(
+                        f"Filtered reward function must be str, int or Callable, but got {type(fn)}"
+                    )
+
         if explicit_reward_fn:
             self.reward_funcs = (
                 explicit_reward_fn
@@ -301,28 +344,67 @@ class Reward:
             logger.info(
                 f"[Reward] Using provided reward functions: {self.reward_funcs}, `config.train.train_policy.reward_function` will be ignored"
             )
+            self.is_filter = [0.0] * len(self.reward_funcs)
+            for i, weight in index_for_filter_in_explicit:
+                assert (
+                    i < len(self.reward_funcs)
+                ), f"Index {i} for filtered reward function is out of range, only {len(self.reward_funcs)} reward functions are provided."
+                self.is_filter[i] = weight
         else:
-            if not reward_function:
-                reward_function = config.train.train_policy.reward_function
             self.reward_funcs = []
+            self.is_filter = []
             for name, weight in reward_function.items():
                 reward_func = RewardFn.from_string(name)
                 if reward_func not in REWARD_FUNC_MAPPING:
                     raise ValueError(
                         f"Reward function {reward_func} not found in mapping."
                     )
+                self.is_filter.append(filter_reward_name_to_weight.get(name, 0.0))
                 self.reward_funcs.append((REWARD_FUNC_MAPPING[name], weight))
                 logger.info(f"[Reward] Using reward functions: {reward_function}")
+        logger.info(
+            f"[Reward] Using filtered reward functions: {self.filter_reward_fns}"
+        )
+        logger.info(f"[Reward] is_filter: {self.is_filter}")
+        self.data_packer = data_packer
 
-    def compute_reward(self, to_be_evaluated: str, reference: Union[str, None]):
+    def compute_reward(
+        self,
+        to_be_evaluated: str,
+        reference: Union[str, None],
+        prompt: Union[str, List] = "",
+        **kwargs,
+    ) -> Tuple[float, float]:
         total_reward = 0.0
-        for x in self.reward_funcs:
+        filter_reward = 0.0
+        for x, filter in zip(self.reward_funcs, self.is_filter):
             if isinstance(x, tuple):
                 func, weight = x
             else:
                 func = x
                 weight = 1.0
-            total_reward += weight * func(
-                to_be_evaluated, reference, config=self.config, tokenizer=self.tokenizer
+            val = func(
+                to_be_evaluated,
+                reference,
+                prompt=prompt,
+                data_packer=self.data_packer,
+                config=self.config,
+                tokenizer=self.tokenizer,
             )
-        return total_reward
+            total_reward += weight * val
+            filter_reward += filter * val
+
+        for func, weight in self.filter_reward_fns:
+            val = func(
+                to_be_evaluated,
+                reference,
+                prompt=prompt,
+                data_packer=self.data_packer,
+                config=self.config,
+                tokenizer=self.tokenizer,
+            )
+            filter_reward += val * weight
+
+        if all([f == 0.0 for f in self.is_filter]) and len(self.filter_reward_fns) == 0:
+            filter_reward = total_reward
+        return total_reward, filter_reward

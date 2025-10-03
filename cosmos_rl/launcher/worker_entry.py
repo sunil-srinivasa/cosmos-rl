@@ -4,16 +4,23 @@ from cosmos_rl.dispatcher.data.packer.base import DataPacker
 from cosmos_rl.utils.logging import logger
 from cosmos_rl.policy.config import Config as CosmosConfig
 from torch.utils.data import Dataset
+import argparse
 
 
 def main(
     dataset: Optional[Union[Dataset, Callable[[CosmosConfig], Dataset]]] = None,
     data_packer: Optional[DataPacker] = None,
     reward_fns: Optional[List[Callable]] = None,
+    filter_reward_fns: Optional[List[Callable]] = None,
     val_dataset: Optional[Dataset] = None,
     val_reward_fns: Optional[List[Callable]] = None,
     val_data_packer: Optional[DataPacker] = None,
-    *args,
+    custom_logger_fns: Optional[List[Callable]] = None,
+    sampler: Optional[Callable] = None,
+    batch_sampler: Optional[Callable] = None,
+    val_sampler: Optional[Callable] = None,
+    val_batch_sampler: Optional[Callable] = None,
+    args: Optional[argparse.Namespace] = None,
     **kwargs,
 ):
     if kwargs:
@@ -28,19 +35,41 @@ def main(
             dataset=dataset,
             data_packer=data_packer,
             reward_fns=reward_fns,
+            filter_reward_fns=filter_reward_fns,
             val_dataset=val_dataset,
             val_reward_fns=val_reward_fns,
             val_data_packer=val_data_packer,
+            custom_logger_fns=custom_logger_fns,
+            sampler=sampler,
+            batch_sampler=batch_sampler,
+            val_sampler=val_sampler,
+            val_batch_sampler=val_batch_sampler,
+            args=args,
         )
     elif role == "Policy":
         from cosmos_rl.policy.train import main as policy_main
 
-        policy_main()
+        policy_main(
+            dataset=dataset,
+            data_packer=data_packer,
+            val_dataset=val_dataset,
+            val_data_packer=val_data_packer,
+            sampler=sampler,
+            batch_sampler=batch_sampler,
+            val_sampler=val_sampler,
+            val_batch_sampler=val_batch_sampler,
+        )
         return
     else:
         from cosmos_rl.rollout.rollout_entrance import run_rollout
 
-        run_rollout()
+        run_rollout(
+            dataset=dataset,
+            reward_fns=reward_fns,
+            filter_reward_fns=filter_reward_fns,
+            val_dataset=val_dataset,
+            val_reward_fns=val_reward_fns,
+        )
         return
 
 

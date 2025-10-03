@@ -16,9 +16,9 @@
 import os
 import torch
 import torch.nn as nn
-from torch.distributed._composable.replicate import replicate
-
+from typing import Callable, Optional
 from torch.distributed.device_mesh import DeviceMesh
+from torch.distributed._composable.replicate import replicate
 from torch.distributed.fsdp import CPUOffloadPolicy, fully_shard, MixedPrecisionPolicy
 from torch.distributed.tensor import Replicate, Shard
 from torch.distributed.tensor.parallel import (
@@ -29,13 +29,17 @@ from torch.distributed.tensor.parallel import (
     RowwiseParallel,
     SequenceParallel,
 )
-import cosmos_rl.utils.util as util
+from cosmos_rl.utils.distributed import ReplicateParallel
 from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.utils.logging import logger
+from cosmos_rl.utils.util import str2torch_dtype
 from cosmos_rl.policy.config import Config as CosmosConfig
 from cosmos_rl.patch import PipelineStage, Schedule1F1B, ScheduleGPipe
-from typing import Callable, Optional
-from cosmos_rl.utils.distributed import ReplicateParallel
+from cosmos_rl.utils.ulysses import (
+    ulysses_attn_func,
+    swizzle_cp_forward,
+    ulysses_attn_func_varlen,
+)
 
 
 def parallelize(
@@ -52,13 +56,17 @@ def parallelize(
     the model must fit on GPU or CPU memory.
     """
     world_mesh = parallel_dims.mesh
+
     pipeline_parallelize(model, parallel_dims, config)
+
     if parallel_dims.tp_enabled:
         apply_tp_ep(
             model,
             world_mesh["tp"],
-            enable_float8_tensorwise_tp=False,
+            enable_float8_tensorwise_tp=config.train.fp8.enable_fp8
+            and config.train.fp8.quant_recipe == "tensorwise",
             enable_async_tp=config.train.async_tp_enabled,
+            parallel_dims=parallel_dims,
         )
 
     if parallel_dims.cp_enabled:
@@ -67,33 +75,83 @@ def parallelize(
 
     # turn on per-TransformerBlock compile after AC wrapping and before FSDP
     if config.train.compile:
+        """
+        Why we need to apply compile after AC wrapping and before FSDP?
+        https://github.com/pytorch/torchtitan/issues/472#issuecomment-2242200809
+        """
         apply_compile(model)
 
-    if (
-        parallel_dims.dp_shard_enabled or parallel_dims.cp_enabled
-    ):  # apply FSDP or HSDP, potentially with Context Parallel
+    reshard_after_forward_policy = config.train.fsdp_reshard_after_forward
+    # For visual model, TP mesh should be merged into DP_Shard
+    if model.visual is not None and (
+        parallel_dims.tp_enabled
+        or parallel_dims.dp_shard_enabled
+        or parallel_dims.cp_enabled
+    ):
+        logger.info(
+            f"Applying FSDP(TP-merged: {parallel_dims.tp_enabled}) to the visual model"
+        )
+        mp_policy = MixedPrecisionPolicy(
+            param_dtype=str2torch_dtype(config.train.param_dtype),
+            reduce_dtype=str2torch_dtype(config.train.fsdp_reduce_dtype),
+            cast_forward_inputs=False,
+        )
+        fsdp_config = {"mesh": world_mesh["dp_cp_tp"], "mp_policy": mp_policy}
+        if config.train.fsdp_offload:
+            fsdp_config["offload_policy"] = CPUOffloadPolicy()
+        for layer_id, transformer_block in model.visual.encoder.layers.items():
+            if reshard_after_forward_policy == "always":
+                reshard_after_forward = True
+            elif reshard_after_forward_policy == "never":
+                reshard_after_forward = False
+            elif reshard_after_forward_policy == "default":
+                if parallel_dims.pp_enabled:
+                    # For PP, do not reshard after forward to avoid per-microbatch
+                    # all-gathers, which can be expensive and non-overlapped
+                    reshard_after_forward = False
+                else:
+                    # As an optimization, do not reshard after forward for the last
+                    # transformer block since FSDP would prefetch it immediately
+                    reshard_after_forward = (
+                        int(layer_id) < len(model.visual.encoder.layers) - 1
+                    )
+            else:
+                raise ValueError(
+                    f"Invalid reshard_after_forward_policy: {reshard_after_forward_policy}."
+                )
+            fully_shard(
+                transformer_block,
+                **fsdp_config,
+                reshard_after_forward=reshard_after_forward,
+            )
+        fully_shard(
+            model.visual,
+            **fsdp_config,
+            reshard_after_forward=not parallel_dims.pp_enabled,
+        )
+
+    if parallel_dims.dp_shard_enabled or parallel_dims.cp_enabled:
         if parallel_dims.dp_replicate_enabled:
             dp_mesh_dim_names = ("dp_replicate", "dp_shard_cp")
-        else:
+        elif parallel_dims.dp_shard_enabled or parallel_dims.cp_enabled:
             dp_mesh_dim_names = ("dp_shard_cp",)
-
+        else:
+            dp_mesh_dim_names = ()
+        # apply FSDP or HSDP, potentially with Context Parallel
         apply_fsdp(
             model,
             world_mesh[tuple(dp_mesh_dim_names)],
-            param_dtype=util.str2torch_dtype(config.train.param_dtype),
-            reduce_dtype=util.str2torch_dtype(config.train.fsdp_reduce_dtype),
+            param_dtype=str2torch_dtype(config.train.param_dtype),
+            reduce_dtype=str2torch_dtype(config.train.fsdp_reduce_dtype),
             pp_enabled=parallel_dims.pp_enabled,
             cpu_offload=config.train.fsdp_offload,
-            reshard_after_forward_policy=config.train.fsdp_reshard_after_forward,
+            reshard_after_forward_policy=reshard_after_forward_policy,
         )
 
         if parallel_dims.dp_replicate_enabled:
             logger.info("Applied HSDP to the model")
         else:
             logger.info("Applied FSDP to the model")
-
-        if parallel_dims.cp_enabled:
-            logger.info("Applied Context Parallel to the model")
 
         if config.train.fsdp_offload:
             logger.info("Applied CPU Offloading to the model")
@@ -140,30 +198,65 @@ def parallelize(
             config.train.train_batch_per_replica
             // config.policy.parallelism.pp_micro_batch_size
         )
-        if config.train.enable_validation:
+        if config.validation.enable:
             assert (
-                config.train.validation_batch_per_replica
+                config.validation.batch_size
                 % config.policy.parallelism.pp_micro_batch_size
                 == 0
             ), "validation_batch must be divisible by pp_micro_batch_size"
             assert (
                 (
-                    config.train.validation_batch_per_replica
+                    config.validation.batch_size
                     // config.policy.parallelism.pp_micro_batch_size
                 )
                 % pp_size
                 == 0
             ), "validation_batch / pp_micro_batch_size must be divisible by pp_size"
             n_val_microbatches = (
-                config.train.validation_batch_per_replica
+                config.validation.batch_size
                 // config.policy.parallelism.pp_micro_batch_size
             )
+
+        if config.train.train_policy.type == "grpo":
+            assert (
+                config.train.train_batch_per_replica
+                % (
+                    config.policy.parallelism.dp_shard_size
+                    * config.train.train_policy.mini_batch
+                )
+                == 0
+            ), "train_batch must be divisible by dp_shard_size * mini_batch"
+            assert (
+                config.train.train_policy.mini_batch
+                % config.policy.parallelism.pp_micro_batch_size
+                == 0
+            ), "mini_batch must be divisible by pp_micro_batch_size"
+            n_microbatches = (
+                config.train.train_policy.mini_batch
+                // config.policy.parallelism.pp_micro_batch_size
+            )
+        else:
+            assert (
+                config.train.train_batch_per_replica
+                % config.train.train_policy.mini_batch
+                == 0
+            ), "train_batch must be divisible by mini_batch"
+            assert (
+                config.train.train_policy.mini_batch
+                % config.policy.parallelism.pp_micro_batch_size
+                == 0
+            ), "mini_batch must be divisible by pp_micro_batch_size"
+            n_microbatches = (
+                config.train.train_policy.mini_batch
+                // config.policy.parallelism.pp_micro_batch_size
+            )
+
         schedule = Schedule1F1B(
             stage=stage,
             n_microbatches=n_microbatches,
             loss_fn=pp_loss_fn,
         )
-        if config.train.enable_validation:
+        if config.validation.enable:
             val_schedule = ScheduleGPipe(
                 stage=stage,
                 n_microbatches=n_val_microbatches,
@@ -177,10 +270,25 @@ def parallelize(
 
 def apply_cp(model: nn.Module, parallel_dims: ParallelDims):
     """Apply Context Parallel to the model."""
+    # check if cp is compatible with model
     cp_size, tp_size = parallel_dims.cp_coord[1], parallel_dims.tp_coord[1]
     model.check_cp_compatible(cp_size, tp_size)
 
-    # TODO: (lms) Add support for DeepseekV3MoEModel with MLA.
+    cp_mesh = parallel_dims.mesh["cp"]
+    # For language
+    for _, transformer_block in model.model.layers.items():
+        original_attn_func = transformer_block.self_attn.attn_func
+        transformer_block.self_attn.attn_func = ulysses_attn_func(
+            original_attn_func, cp_mesh
+        )
+    for _, transformer_block in model.model.layers.items():
+        original_attn_func_varlen = transformer_block.self_attn.attn_func_varlen
+        transformer_block.self_attn.attn_func_varlen = ulysses_attn_func_varlen(
+            original_attn_func_varlen, cp_mesh
+        )
+
+    # For visual model since we merge cp into fsdp, no need handling.
+    swizzle_cp_forward(model, parallel_dims)
 
 
 def apply_tp_ep(
@@ -188,32 +296,36 @@ def apply_tp_ep(
     tp_ep_mesh: DeviceMesh,
     enable_float8_tensorwise_tp: bool,
     enable_async_tp: bool,
+    parallel_dims: ParallelDims,
 ):
     """Apply tensor parallelism."""
     # 1. Parallelize the embedding and shard its outputs (which are the first
     # transformer block's inputs)
     # 2. Parallelize the root norm layer over the sequence dim
     # 3. Parallelize the final linear output layer
+    tp_plan = {
+        "embed_tokens": RowwiseParallel(
+            input_layouts=Replicate(),
+            output_layouts=Replicate(),
+        ),
+        "norm": SequenceParallel(),
+        "lm_head": ColwiseParallel(
+            input_layouts=Shard(1),
+            output_layouts=Replicate(),
+            use_local_output=True,
+        ),
+    }
+    if parallel_dims.pp_coord[0] == 0:
+        tp_plan["identity_layer"] = PrepareModuleOutput(
+            output_layouts=Replicate(),
+            desired_output_layouts=Shard(1),
+            use_local_output=True,
+        )
+
     parallelize_module(
-        model,
+        model.model,
         tp_ep_mesh,
-        {
-            "embed_tokens": RowwiseParallel(
-                input_layouts=Replicate(),
-                output_layouts=Replicate(),
-            ),
-            "identity_layer": PrepareModuleOutput(
-                output_layouts=Replicate(),
-                desired_output_layouts=Shard(1),
-                use_local_output=True,
-            ),
-            "norm": SequenceParallel(),
-            "lm_head": ColwiseParallel(
-                input_layouts=Shard(1),
-                output_layouts=Replicate(),
-                use_local_output=True,
-            ),
-        },
+        tp_plan,
     )
 
     # Parallel styles used for transformer block linear weights and their
@@ -232,11 +344,7 @@ def apply_tp_ep(
             PrepareFloat8ModuleInput,
         )
     else:
-        (
-            rowwise_parallel,
-            colwise_parallel,
-            prepare_module_input,
-        ) = (
+        rowwise_parallel, colwise_parallel, prepare_module_input = (
             RowwiseParallel,
             ColwiseParallel,
             PrepareModuleInput,
@@ -244,17 +352,7 @@ def apply_tp_ep(
 
     # - Apply tensor + sequence parallelism to self-attention
     # - Apply expert parallelism to MLP
-    # for layer_id, transformer_block in model.layers.items():
-    moe_layer_freq = model.model_args.moe_layer_freq
-    first_k_dense_replace = model.model_args.first_k_dense_replace
-    n_routed_experts = model.model_args.n_routed_experts
-    # n_shared_experts = model.model_args.n_shared_experts
-    for layer_id, transformer_block in enumerate(model.layers):
-        has_moe = (
-            n_routed_experts is not None
-            and layer_id >= first_k_dense_replace
-            and layer_id % moe_layer_freq == 0
-        )
+    for layer_id, transformer_block in model.model.layers.items():
         layer_plan = {
             "input_layernorm": SequenceParallel(),
             "self_attn": prepare_module_input(
@@ -268,128 +366,97 @@ def apply_tp_ep(
                 ),  # Attn OP needs the input to be replicated over the sequence dimension so that all sequence can be attended to
             ),
             "self_attn.q_proj": colwise_parallel(),
-            "self_attn.kv_a_proj_with_mqa": ReplicateParallel(),  # n_head = 1, no need to shard over the head dimension
-            "self_attn.kv_a_layernorm": SequenceParallel(use_local_output=True),
-            "self_attn.kv_b_proj": colwise_parallel(),
+            "self_attn.k_proj": colwise_parallel(),
+            "self_attn.q_norm": ReplicateParallel(),
+            "self_attn.k_norm": ReplicateParallel(),
+            "self_attn.v_proj": colwise_parallel(),
             "self_attn.o_proj": rowwise_parallel(output_layouts=Shard(1)),
             "post_attention_layernorm": SequenceParallel(use_local_output=True),
+            # "mlp.gate": ReplicateParallel(),
             "mlp.reshard_helper_layer": PrepareModuleOutput(
                 output_layouts=Shard(1),
                 desired_output_layouts=Shard(1),
                 use_local_output=True,
             ),
         }
+        transformer_block.mlp.ep_group = tp_ep_mesh.get_group()
+        transformer_block.mlp.ep_size = tp_ep_mesh.size()
+        assert (
+            transformer_block.mlp.total_experts % tp_ep_mesh.size() == 0
+        ), "number of experts must be divisible by tp_ep_mesh.size()"
+        transformer_block.mlp.local_experts = (
+            transformer_block.mlp.total_experts // tp_ep_mesh.size()
+        )
 
-        if has_moe:
-            transformer_block.mlp.experts = None
-            layer_plan.update(
-                {
-                    # "mlp.gate": ReplicateParallel(),
-                    "mlp.shared_experts": prepare_module_input(
-                        input_layouts=(Shard(1),),
-                        desired_input_layouts=(
-                            Replicate(),
-                        ),  # Weight is shared, so no sharding on input
+        transformer_block.mlp.up_proj.register_parameter(
+            "weight",
+            nn.Parameter(
+                torch.distributed.tensor.DTensor.from_local(
+                    nn.Parameter(
+                        torch.empty(
+                            transformer_block.mlp.local_experts,
+                            transformer_block.mlp.intermediate_dim,
+                            transformer_block.mlp.dim,
+                            dtype=transformer_block.mlp.up_proj.weight.dtype,
+                            device=transformer_block.mlp.up_proj.weight.device,
+                        )
                     ),
-                    "mlp.shared_experts.gate_proj": colwise_parallel(),
-                    "mlp.shared_experts.down_proj": rowwise_parallel(
-                        output_layouts=Shard(1)
+                    tp_ep_mesh,
+                    [Shard(0)],
+                    run_check=False,
+                )
+            ),
+        )
+        transformer_block.mlp.down_proj.register_parameter(
+            "weight",
+            nn.Parameter(
+                torch.distributed.tensor.DTensor.from_local(
+                    nn.Parameter(
+                        torch.empty(
+                            transformer_block.mlp.local_experts,
+                            transformer_block.mlp.dim,
+                            transformer_block.mlp.intermediate_dim,
+                            dtype=transformer_block.mlp.down_proj.weight.dtype,
+                            device=transformer_block.mlp.down_proj.weight.device,
+                        )
                     ),
-                    "mlp.shared_experts.up_proj": colwise_parallel(),
-                }
-            )
-            transformer_block.mlp.ep_group = tp_ep_mesh.get_group()
-            transformer_block.mlp.ep_size = tp_ep_mesh.size()
-            assert (
-                transformer_block.mlp.total_experts % tp_ep_mesh.size() == 0
-            ), "number of experts must be divisible by tp_ep_mesh.size()"
-            transformer_block.mlp.local_experts = (
-                transformer_block.mlp.total_experts // tp_ep_mesh.size()
-            )
-
-            transformer_block.mlp.experts_ep.up_proj.register_parameter(
-                "weight",
-                nn.Parameter(
-                    torch.distributed.tensor.DTensor.from_local(
-                        nn.Parameter(
-                            torch.empty(
-                                transformer_block.mlp.local_experts,
-                                transformer_block.mlp.experts_ep.intermediate_size,
-                                transformer_block.mlp.experts_ep.hidden_size,
-                                dtype=transformer_block.mlp.experts_ep.up_proj.weight.dtype,
-                                device=transformer_block.mlp.experts_ep.up_proj.weight.device,
-                            )
-                        ),
-                        tp_ep_mesh,
-                        [Shard(0)],
-                        run_check=False,
-                    )
-                ),
-            )
-            transformer_block.mlp.experts_ep.down_proj.register_parameter(
-                "weight",
-                nn.Parameter(
-                    torch.distributed.tensor.DTensor.from_local(
-                        nn.Parameter(
-                            torch.empty(
-                                transformer_block.mlp.local_experts,
-                                transformer_block.mlp.experts_ep.hidden_size,
-                                transformer_block.mlp.experts_ep.intermediate_size,
-                                dtype=transformer_block.mlp.experts_ep.down_proj.weight.dtype,
-                                device=transformer_block.mlp.experts_ep.down_proj.weight.device,
-                            )
-                        ),
-                        tp_ep_mesh,
-                        [Shard(0)],
-                        run_check=False,
-                    )
-                ),
-            )
-            transformer_block.mlp.experts_ep.gate_proj.register_parameter(
-                "weight",
-                nn.Parameter(
-                    torch.distributed.tensor.DTensor.from_local(
-                        nn.Parameter(
-                            torch.empty(
-                                transformer_block.mlp.local_experts,
-                                transformer_block.mlp.experts_ep.intermediate_size,
-                                transformer_block.mlp.experts_ep.hidden_size,
-                                dtype=transformer_block.mlp.experts_ep.gate_proj.weight.dtype,
-                                device=transformer_block.mlp.experts_ep.gate_proj.weight.device,
-                            )
-                        ),
-                        tp_ep_mesh,
-                        [Shard(0)],
-                        run_check=False,
-                    )
-                ),
-            )
-            assert (
-                transformer_block.mlp.experts_ep.gate_proj.weight.to_local().shape[0]
-                == transformer_block.mlp.local_experts
-            ), f"gate_proj.weight.shape[0] must be equal to local_experts, {transformer_block.mlp.experts_ep.gate_proj.weight.to_local().shape[0]} != {transformer_block.mlp.local_experts}"
-            assert (
-                transformer_block.mlp.experts_ep.up_proj.weight.to_local().shape[0]
-                == transformer_block.mlp.local_experts
-            ), f"up_proj.weight.shape[0] must be equal to local_experts, {transformer_block.mlp.experts_ep.up_proj.weight.to_local().shape[0]} != {transformer_block.mlp.local_experts}"
-            assert (
-                transformer_block.mlp.experts_ep.down_proj.weight.to_local().shape[0]
-                == transformer_block.mlp.local_experts
-            ), f"down_proj.weight.shape[0] must be equal to local_experts, {transformer_block.mlp.experts_ep.down_proj.weight.to_local().shape[0]} != {transformer_block.mlp.local_experts}"
-        else:
-            layer_plan.update(
-                {
-                    "mlp": prepare_module_input(
-                        input_layouts=(Shard(1),),
-                        desired_input_layouts=(
-                            Replicate(),
-                        ),  # Weight is shared, so no sharding on input
+                    tp_ep_mesh,
+                    [Shard(0)],
+                    run_check=False,
+                )
+            ),
+        )
+        transformer_block.mlp.gate_proj.register_parameter(
+            "weight",
+            nn.Parameter(
+                torch.distributed.tensor.DTensor.from_local(
+                    nn.Parameter(
+                        torch.empty(
+                            transformer_block.mlp.local_experts,
+                            transformer_block.mlp.intermediate_dim,
+                            transformer_block.mlp.dim,
+                            dtype=transformer_block.mlp.gate_proj.weight.dtype,
+                            device=transformer_block.mlp.gate_proj.weight.device,
+                        )
                     ),
-                    "mlp.gate_proj": colwise_parallel(),
-                    "mlp.down_proj": rowwise_parallel(output_layouts=Shard(1)),
-                    "mlp.up_proj": colwise_parallel(),
-                }
-            )
+                    tp_ep_mesh,
+                    [Shard(0)],
+                    run_check=False,
+                )
+            ),
+        )
+        assert (
+            transformer_block.mlp.gate_proj.weight.to_local().shape[0]
+            == transformer_block.mlp.local_experts
+        ), f"gate_proj.weight.shape[0] must be equal to local_experts, {transformer_block.mlp.gate_proj.weight.to_local().shape[0]} != {transformer_block.mlp.local_experts}"
+        assert (
+            transformer_block.mlp.up_proj.weight.to_local().shape[0]
+            == transformer_block.mlp.local_experts
+        ), f"up_proj.weight.shape[0] must be equal to local_experts, {transformer_block.mlp.up_proj.weight.to_local().shape[0]} != {transformer_block.mlp.local_experts}"
+        assert (
+            transformer_block.mlp.down_proj.weight.to_local().shape[0]
+            == transformer_block.mlp.local_experts
+        ), f"down_proj.weight.shape[0] must be equal to local_experts, {transformer_block.mlp.down_proj.weight.to_local().shape[0]} != {transformer_block.mlp.local_experts}"
 
         parallelize_module(
             module=transformer_block,
@@ -421,16 +488,24 @@ _save_list = {
 }
 
 
-def apply_compile(model: nn.Module):
+def apply_compile(model: nn.Module, fullgraph: bool = True):
     """
     Apply torch.compile to each TransformerBlock, which makes compilation efficient due to
     repeated structure. Alternatively one can compile the whole model (after applying DP).
     """
-    for layer_id, transformer_block in model.layers.named_children():
-        transformer_block = torch.compile(transformer_block, fullgraph=True)
-        model.layers.register_module(layer_id, transformer_block)
+    for layer_id, transformer_block in model.model.layers.named_children():
+        transformer_block = torch.compile(transformer_block, fullgraph=fullgraph)
+        model.model.layers.register_module(layer_id, transformer_block)
 
-    logger.info("Compiling each TransformerBlock with torch.compile")
+    # ``model.visual`` could get deleted by pipeline split
+    if model.visual is not None:
+        for layer_id, transformer_block in model.visual.encoder.layers.named_children():
+            transformer_block = torch.compile(
+                transformer_block, fullgraph=fullgraph, dynamic=True
+            )
+            model.visual.encoder.layers.register_module(layer_id, transformer_block)
+
+    logger.info("Each TransformerBlock compiled with torch.compile")
 
 
 def apply_fsdp(
@@ -459,12 +534,14 @@ def apply_fsdp(
             - "never" will disable `reshard_after_forward` for all forward passes.
 
     """
-    mp_policy = MixedPrecisionPolicy(param_dtype=param_dtype, reduce_dtype=reduce_dtype)
+    mp_policy = MixedPrecisionPolicy(
+        param_dtype=param_dtype, reduce_dtype=reduce_dtype, cast_forward_inputs=False
+    )
     fsdp_config = {"mesh": dp_mesh, "mp_policy": mp_policy}
     if cpu_offload:
         fsdp_config["offload_policy"] = CPUOffloadPolicy()
 
-    for layer_id, transformer_block in model.layers.items():
+    for layer_id, transformer_block in model.model.layers.items():
         if reshard_after_forward_policy == "always":
             reshard_after_forward = True
         elif reshard_after_forward_policy == "never":
@@ -477,7 +554,7 @@ def apply_fsdp(
             else:
                 # As an optimization, do not reshard after forward for the last
                 # transformer block since FSDP would prefetch it immediately
-                reshard_after_forward = int(layer_id) < len(model.layers) - 1
+                reshard_after_forward = int(layer_id) < len(model.model.layers) - 1
         else:
             raise ValueError(
                 f"Invalid reshard_after_forward_policy: {reshard_after_forward_policy}."
@@ -487,6 +564,10 @@ def apply_fsdp(
             **fsdp_config,
             reshard_after_forward=reshard_after_forward,
         )
+    if model.model.embed_tokens is not None:
+        fully_shard(model.model.embed_tokens, **fsdp_config, reshard_after_forward=True)
+    if model.mlp1 is not None:
+        fully_shard(model.mlp1, **fsdp_config, reshard_after_forward=True)
     fully_shard(model, **fsdp_config, reshard_after_forward=not pp_enabled)
 
 
@@ -514,6 +595,10 @@ def pipeline_parallelize(
     parallel_dims: ParallelDims,
     config: CosmosConfig,
 ):
+    # TODO(huik): support pipeline parallelism for InternVL
+    assert (
+        not parallel_dims.pp_enabled
+    ), "Pipeline parallelism is not supported for InternVL currently."
     if parallel_dims.pp_enabled:
         pp_rank, pp_size = parallel_dims.pp_coord
         model.apply_pipeline_split(pp_rank, pp_size)
