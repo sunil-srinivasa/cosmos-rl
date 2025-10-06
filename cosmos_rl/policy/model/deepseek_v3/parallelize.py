@@ -41,17 +41,17 @@ from cosmos_rl.policy.kernel.moe.moe import GroupedExpertsDeepEP, MoE
 from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_model import (
     pipeline_model,
 )
-
-# from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_schedules import (
-#     _PipelineSchedule,
-# )
+from cosmos_rl.policy.model.deepseek_v3.pipeline_parallelism.pipeline_schedules import (
+    _PipelineSchedule,
+)
 from cosmos_rl.utils.parallelism import ParallelDims
 from cosmos_rl.utils.pipelining.pipelining_utils import build_pipeline_schedule
 from cosmos_rl.utils.ulysses import swizzle_cp_forward, ulysses_attn_func
 from torch.distributed.algorithms._checkpoint.checkpoint_wrapper import (
     checkpoint_wrapper as ptd_checkpoint_wrapper,
 )
-from torch.distributed.pipelining.schedules import _PipelineSchedule
+
+# from torch.distributed.pipelining.schedules import _PipelineSchedule
 from transformer_engine.pytorch.attention import DotProductAttention
 
 
