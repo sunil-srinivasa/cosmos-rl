@@ -34,6 +34,7 @@ from cosmos_rl.utils.wandb_logger import (
 from transformers import AutoTokenizer
 import numpy as np
 from tqdm import tqdm
+import itertools
 
 
 class ReplicaScalingEnum(StrEnum):
@@ -103,12 +104,21 @@ class PolicyStatusManager:
 
     def __init__(self):
         self.policy_replicas = {}
+        # number of steps that needed to interate over all the samples across all the epochs.
         self.total_steps = 0
+        # current step of the policy training, this step could won't reach to total_steps because of dynmaic sampling.
+        # Some samples could be filtered out due to dynamic sampling and they won't be used for policy training.
+        # This step is the actual weight update step, it is also binded to the weight version.
         self.current_step = 0
+
         self.rollout_buffer = Queue()
         self.remain_samples_num = 0
+        self.consumed_samples_num = 0
+
         self.status = {}
+
         self.train_report_data = RollingDict(maxlen=20)
+
         self.replica_scaling_log = []
 
         # Validation
@@ -653,6 +663,37 @@ class PolicyStatusManager:
         self.rollout_buffer.put(rollout)
         self.try_trigger_data_fetch_and_training()
 
+    def put_rollouts(
+        self, valid_rollouts: List[Rollout], invalid_rollouts: List[Rollout]
+    ):
+        """
+        Put the rollouts to the rollout buffer.
+        """
+        completion_tokens_count = 0
+        n_samples = 0
+        rollouts_to_put = None
+
+        if self.config.train.train_policy.variant == "dapo":
+            rollouts_to_put = valid_rollouts
+            # In single-thread: invalid rollouts should also be decreased from the total number of samples
+            self.remain_samples_num -= len(invalid_rollouts)
+        else:
+            rollouts_to_put = list(itertools.chain(valid_rollouts, invalid_rollouts))
+
+        if self.config.train.train_policy.on_policy:
+            # record the samples that will be consumed by policy
+            self.consumed_samples_num += len(rollouts_to_put)
+
+        for rollout in rollouts_to_put:
+            completion_tokens_count += len(self.tokenizer.encode(rollout.completion))
+            n_samples += 1
+            if self.config.train.train_policy.on_policy:
+                if self.rollouts_enough_for_one_step():
+                    break
+            self.put_rollout(rollout)
+
+        return completion_tokens_count, n_samples
+
     def train_ack(
         self,
         replica_name: str,
@@ -813,6 +854,15 @@ class PolicyStatusManager:
             redis_handler=self.redis_handler,
         )
 
+    def rollouts_enough_for_one_step(self) -> bool:
+        """
+        Check if the rollouts are enough.
+        """
+        return self.total_pending_rollouts() >= (
+            self.config.train.train_batch_per_replica
+            * len(self.get_all_atoms_arrived_replicas())
+        )
+
     def try_trigger_data_fetch_and_training(self, is_fake_last_cmd=False):
         # If the validation dataloader is activated, do not trigger data fetch and training
         if self.activated_val_iter is not None:
@@ -836,14 +886,15 @@ class PolicyStatusManager:
         else:
             items_count = self.config.train.train_batch_per_replica
             required_rollouts = items_count * len(arrived_replicas)
-            all_ready_or_reduced = self.all_ready_or_reduced() and (
-                self.rollout_buffer.qsize() >= required_rollouts
+            all_ready_or_reduced = (
+                self.all_ready_or_reduced() and self.rollouts_enough_for_one_step()
             )
 
         # If the last command is fake, we need to trigger data fetch and training no matter
         # whether there are enough rollouts or whether replicas are `ready` or `reduced`.
         if all_ready_or_reduced:
             rollouts_of_this_step: List[Rollout] = []
+            # Decrease the consumed rollouts number.
             self.remain_samples_num -= required_rollouts
 
             # From controller's perspective, the training step is already increased
@@ -855,12 +906,15 @@ class PolicyStatusManager:
             ):
                 self.validation_activate_dataloader(self.current_step)
 
+            # FIXME: (lms) will this dipatch style cause non-alignment with VeRL?
+            # This dispatch style will cause rollouts from same prompt may be dispatched to different replicas.
             # Interleave-style data dispatch
             for _ in range(items_count):
                 for replica in arrived_replicas:
                     rollout = self.rollout_buffer.get()
                     replica.put_rollout(rollout, self.redis_handler)
                     rollouts_of_this_step.append(rollout)
+
             # Decide whether to save checkpoint
             # First check if we need to save checkpoint based on epoch
             do_save = False
