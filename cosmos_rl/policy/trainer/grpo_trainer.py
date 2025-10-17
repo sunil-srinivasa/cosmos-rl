@@ -106,8 +106,47 @@ def compute_loss(
             ref_per_token_logps.shape, current_token_logps.shape
         )
 
-    coef_1 = torch.clamp(current_token_logps - old_per_token_logps, min=-20.0, max=20.0)
-    coef_1 = torch.exp(coef_1)
+    shifted_length = cu_seqlens[1:] - cu_seqlens[:-1]
+    bsz = shifted_length.shape[0]
+    negative_approx_kl = current_token_logps - old_per_token_logps
+
+    if config.train.train_policy.variant == "gspo":
+        # For GSPO, we compute sequence-level importance ratios
+        # but we need to maintain gradient flow through the token-level logprobs
+        negative_approx_kl_seq = torch.zeros(
+            bsz, device=negative_approx_kl.device, dtype=negative_approx_kl.dtype
+        )
+
+        # Compute sequence-level average KL divergence
+        for i in range(bsz):
+            seq_tokens = negative_approx_kl[cu_seqlens[i] : cu_seqlens[i + 1]]
+            seq_length = shifted_length[i]
+            assert (
+                len(seq_tokens) == shifted_length[i]
+            ), f"seq_length: {seq_length} != shifted_length: {shifted_length[i]}"
+            if seq_length > 0:
+                negative_approx_kl_seq[i] = seq_tokens.sum() / seq_length
+
+        # Clamp for numerical stability
+        negative_approx_kl_seq = torch.clamp(negative_approx_kl_seq, max=10.0)
+
+        importance_ratio_per_token = torch.zeros_like(current_token_logps)
+        for i in range(bsz):
+            start_idx = cu_seqlens[i]
+            end_idx = cu_seqlens[i + 1]
+            seq_length = end_idx - start_idx
+            if seq_length > 0:
+                # Use expand to maintain gradient connection
+                importance_ratio_per_token[start_idx:end_idx] = negative_approx_kl_seq[
+                    i
+                ].expand(seq_length)
+    else:
+        importance_ratio_per_token = torch.clamp(
+            negative_approx_kl, min=-20.0, max=20.0
+        )
+
+    importance_ratio_per_token = torch.exp(importance_ratio_per_token)
+    importance_ratio = importance_ratio_per_token
 
     if config.train.train_policy.aipo_rho is not None:
         # Due to the asynchronous update of the reference model, the rollout is not necessarily
@@ -116,22 +155,25 @@ def compute_loss(
         # approximate on-policy update to latest policy.
         # A difference from double-sided clipping of PPO, we use one-sided clipping.
         rho = config.train.train_policy.aipo_rho
-        per_token_loss = -torch.clamp(coef_1, max=rho) * current_advantages
+        per_token_loss = -torch.clamp(importance_ratio, max=rho) * current_advantages
     else:
         # the standard grpo loss with dual-clip PPO: https://arxiv.org/pdf/1912.09729
-        coef_2 = torch.clamp(
-            coef_1,
+        importance_ratio_clipped = torch.clamp(
+            importance_ratio,
             1 - config.train.train_policy.epsilon_low,
             1 + config.train.train_policy.epsilon_high,
         )
-        per_token_loss1 = coef_1 * current_advantages
-        per_token_loss2 = coef_2 * current_advantages
-        per_token_loss3 = (
-            -config.train.train_policy.lower_bound_ratio * current_advantages
-        )
-        clip_losses1 = -torch.min(per_token_loss1, per_token_loss2)
-        clip_losses2 = torch.min(per_token_loss3, clip_losses1)
-        per_token_loss = torch.where(current_advantages < 0, clip_losses2, clip_losses1)
+        loss1 = importance_ratio * current_advantages
+        loss2 = importance_ratio_clipped * current_advantages
+        if config.train.train_policy.variant == "gspo":
+            per_token_loss = -torch.min(loss1, loss2)
+        else:
+            loss3 = -config.train.train_policy.lower_bound_ratio * current_advantages
+            clip_losses1 = -torch.min(loss1, loss2)
+            clip_losses2 = torch.min(loss3, clip_losses1)
+            per_token_loss = torch.where(
+                current_advantages < 0, clip_losses2, clip_losses1
+            )
 
     # Compute the KL divergence between the model and the reference model
     if config.train.train_policy.kl_beta != 0.0:
@@ -148,7 +190,7 @@ def compute_loss(
     else:
         kl_loss = torch.zeros_like(per_token_loss)
 
-    bsz, max_len = logprob_masks.shape
+    bsz, _ = logprob_masks.shape
     per_token_loss_seq_sum = torch.zeros(
         bsz, device=per_token_loss.device, dtype=per_token_loss.dtype
     )  # [bsz,]
@@ -280,6 +322,8 @@ class GRPOTrainer(Trainer):
         # - Save the checkpoint/safetensors
         self.is_master_replica = True
         self.prepare_shard_infos_for_weight_sync_insts()
+        if config.train.train_policy.variant == "gspo":
+            logger.info("[Policy] Use GSPO loss in RL.")
 
     @torch.no_grad()
     def prepare_shard_infos_for_weight_sync_insts(self):
@@ -1129,7 +1173,7 @@ class GRPOTrainer(Trainer):
         minibatch: Dict[str, Any],
         logits: torch.Tensor,
         is_full_logits: bool = False,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, torch.Tensor]]:
         """
         Compute the per-token log probabilities and advantages
 
@@ -1141,6 +1185,7 @@ class GRPOTrainer(Trainer):
         Returns:
             logps: the per-token log probabilities
             logprob_masks: the logprob_masks
+            metrics: a dict of collected metrics, e.g. entropy
         """
         assert "input_ids" in minibatch, "input_ids is required for computing logprobs"
         assert (
@@ -1172,6 +1217,32 @@ class GRPOTrainer(Trainer):
             return True, kl_beta
         else:
             return False, 0.0
+
+    def reference_reset(self, current_step: int):
+        if (
+            self.config.train.train_policy.kl_beta != 0.0
+            and self.config.train.train_policy.reference_reset_interval is not None
+            and self.config.train.train_policy.reference_reset_interval > 0
+        ):
+            if (
+                current_step % self.config.train.train_policy.reference_reset_interval
+                == 0
+            ):
+                logger.info(
+                    f"[Policy] Resetting reference model at step {current_step} with interval {self.config.train.train_policy.reference_reset_interval}"
+                )
+                # Update the state dict of hf model so that it can be used for KL-divergence calculation
+                state_dict = self.model.state_dict()
+                for key, value in state_dict.items():
+                    assert (
+                        key in self.reference_state_dict
+                    ), f"Key {key} not found in reference state dict"
+                    self.reference_state_dict[key] = value.detach().cpu()
+                if self.config.train.train_policy.reset_optimizer_with_reference:
+                    logger.info("[Policy] Resetting optimizer.")
+                    self.build_optimizers()
+                    for lr in self.lr_schedulers.schedulers:
+                        lr.optimizer = self.optimizers
 
     def train(
         self,
@@ -1240,6 +1311,7 @@ class GRPOTrainer(Trainer):
             for i in range(len(samples))
         ]
 
+        self.metrics = {}
         # user_info_keys = list(kwargs.keys())
         advantages_t = torch.tensor(advantages_list).to(self.device)
         batch_size = len(rollouts)
@@ -1553,15 +1625,18 @@ class GRPOTrainer(Trainer):
                                     )
                                     user_mini_batch["input_ids"] = packed_args["inputs"]
 
-                                current_per_token_logprobs, cu_seqlens = (
-                                    self.compute_logprobs(
-                                        user_mini_batch,
-                                        logits=raw_logits,
-                                        is_full_logits=True
-                                        if raw_logits.ndim == 3
-                                        else False,
-                                    )
+                                (
+                                    current_per_token_logprobs,
+                                    cu_seqlens,
+                                    metrics,
+                                ) = self.compute_logprobs(
+                                    user_mini_batch,
+                                    logits=raw_logits,
+                                    is_full_logits=True
+                                    if raw_logits.ndim == 3
+                                    else False,
                                 )
+                                self.metrics.update(metrics)
                                 logprob_masks = user_mini_batch["logprob_masks"]
                                 current_advantages = (
                                     logprob_masks * minibatched_advantages
@@ -1692,6 +1767,11 @@ class GRPOTrainer(Trainer):
                     report_data["train/kl_loss_avg"] = global_avg_kl_loss
                     report_data["train/kl_loss_max"] = global_max_kl_loss
                 report_data["train/grad_norm"] = grad_norm_sum.item()
+                if len(self.metrics) > 0:
+                    for k, v in self.metrics.items():
+                        report_data[f"train/{k}"] = (
+                            v.item() if isinstance(v, torch.Tensor) else v
+                        )
 
                 # FIXME(dinghaoy): only compute MFU of rank 0, if enable tp or pp,
                 # it will be inaccurate. Need a reduce for all the metrics.
@@ -1737,6 +1817,9 @@ class GRPOTrainer(Trainer):
 
         # For profiling
         self.profiler.step()
+
+        self.reference_reset(current_step)
+
         return report_data
 
     @property
@@ -1806,13 +1889,14 @@ def _swizzle_pp_grpo_forward(
     if config.train.train_policy.temperature > 1e-6:
         raw_logits = raw_logits / config.train.train_policy.temperature
     # [n_tokens, n_vocab]
-    current_per_token_logprobs, cu_seqlens = trainer.compute_logprobs(
+    current_per_token_logprobs, cu_seqlens, metrics = trainer.compute_logprobs(
         minibatch={
             **user_input,
         },
         logits=raw_logits,
         is_full_logits=True if raw_logits.ndim == 3 else False,
     )
+    trainer.metrics.update(metrics)
     logprob_masks = user_input["logprob_masks"]
     current_advantages = logprob_masks * advantages
 
